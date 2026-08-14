@@ -41,6 +41,10 @@
     tabSttActive: false,
     youCurrentText: '',
     youLastEmit: 0,
+    // Runtime controls (independent of global settings)
+    transcriptionPaused: false,
+    coachingPaused: false,
+    meetingType: 'auto',    // 'auto' | id of a saved playbook
   };
 
   // ---- Settings ----------------------------------------------------------
@@ -77,6 +81,7 @@
   function applySettingsSideEffects() {
     const s = state.settings;
     if (!s) return;
+    refreshMeetingTypeOptions();
     if (state.running) {
       if (s.captureMic && !state.micActive) startMic();
       if (!s.captureMic && state.micActive) stopMic();
@@ -305,6 +310,7 @@
   // Dedup similar caption text per speaker within a short window to avoid
   // duplicating partial captions that Google emits incrementally.
   function appendTranscript(speaker, text, source) {
+    if (state.transcriptionPaused) return; // runtime pause
     const norm = normalizeText(text);
     if (!norm) return;
     const last = state.transcript[state.transcript.length - 1];
@@ -332,20 +338,36 @@
     clearTimeout(coachingTimer);
     const s = state.settings;
     if (!s || !s.coachingEnabled || !s.llmEndpoint) return;
+    if (state.coachingPaused) return; // runtime pause
     const interval = Math.max(5, s.coachingIntervalSeconds || 30) * 1000;
     coachingTimer = setTimeout(runCoaching, immediate ? 1500 : interval);
+  }
+
+  // Resolve the playbook text for the current meeting type. 'auto' lets the
+  // LLM choose based on the transcript; otherwise the saved playbook is used.
+  function resolvePlaybook() {
+    const s = state.settings;
+    const playbooks = s?.playbooks || [];
+    if (state.meetingType !== 'auto') {
+      const pb = playbooks.find((p) => p.id === state.meetingType);
+      if (pb) return { type: pb.name, text: pb.text };
+    }
+    // Auto: send all playbook names + the default GGV one as a guide.
+    const list = playbooks.map((p) => `- ${p.name}: ${p.summary || p.text.slice(0, 80)}`).join('\n');
+    return { type: 'automático', text: list ? `Escolha automaticamente o tipo de reunião entre:\n${list}` : '' };
   }
 
   async function runCoaching() {
     const s = state.settings;
     if (!s || !s.coachingEnabled || !s.llmEndpoint) return;
+    if (state.coachingPaused) return;
     const now = Date.now();
     const windowMs = Math.max(30000, (s.coachingIntervalSeconds || 30) * 1000 * 3);
     const recent = state.transcript.filter((t) => now - t.ts < windowMs);
     if (recent.length === 0) { scheduleCoaching(false); return; }
 
-    const transcriptText = recent.map((t) =>
-      `${t.speaker}: ${t.text}`).join('\n');
+    const transcriptText = recent.map((t) => `${t.speaker}: ${t.text}`).join('\n');
+    const { type, text: playbookText } = resolvePlaybook();
 
     const system = [
       'Você é um live coach de vendas em tempo real durante uma call no Google Meet.',
@@ -353,7 +375,8 @@
       'com base no playbook de vendas fornecido. Seja direto, no máximo 3 bullets.',
       'Não invente informações que não estejam no transcript. Se faltar contexto,',
       'indique a próxima pergunta ou etapa do playbook a explorar.',
-      s.playbook ? `\n--- PLAYBOOK DE VENDAS ---\n${s.playbook}\n--- FIM DO PLAYBOOK ---` : '',
+      `\nTipo de reunião (contexto): ${type}.`,
+      playbookText ? `\n--- PLAYBOOK DE VENDAS ---\n${playbookText}\n--- FIM DO PLAYBOOK ---` : '',
     ].join(' ');
 
     const body = {
@@ -401,13 +424,18 @@
     root.innerHTML = `
       <div class="mc-header">
         <div class="mc-title">
-          <img class="mc-logo" alt="GGV" src="https://ggvinteligencia.com.br/wp-content/uploads/2025/08/Logo-GGV-Branca.png" />
+          <img class="mc-logo" alt="GGV" src="https://ggvinteligencia.com.br/wp-content/uploads/2025/08/Logo-GGV-Padrao.png" />
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <span class="mc-dot idle"></span>
           <button class="mc-iconbtn" data-act="tab" title="Alternar Transcrição/Coach">⇄</button>
           <button class="mc-iconbtn" data-act="collapse" title="Recolher painel">–</button>
         </div>
+      </div>
+      <div class="mc-controls">
+        <select class="mc-meeting-select" id="mc-meeting-type" title="Tipo de reunião / playbook"></select>
+        <button class="mc-ctrl-btn" id="mc-pause-transcript" title="Pausar/retomar transcrição">▶ Transcrição</button>
+        <button class="mc-ctrl-btn" id="mc-pause-coach" title="Pausar/retomar coach">▶ Coach</button>
       </div>
       <div class="mc-tabs">
         <div class="mc-tab active" data-tab="transcript">Transcrição</div>
@@ -424,21 +452,53 @@
     els = {
       root,
       body: root.querySelector('.mc-body'),
-      dot: root.querySelector('.mc-title .mc-dot'),
+      dot: root.querySelector('.mc-header .mc-dot'),
       statusDot: root.querySelector('.mc-status .mc-dot'),
       statusText: root.querySelector('.mc-status-text'),
       count: root.querySelector('.mc-count'),
       tabs: Array.from(root.querySelectorAll('.mc-tab')),
+      meetingSelect: root.querySelector('#mc-meeting-type'),
+      pauseTranscriptBtn: root.querySelector('#mc-pause-transcript'),
+      pauseCoachBtn: root.querySelector('#mc-pause-coach'),
     };
 
     els.tabs.forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
     root.querySelector('[data-act="tab"]').addEventListener('click', () =>
       switchTab(state.activeTab === 'transcript' ? 'coach' : 'transcript'));
     root.querySelector('[data-act="collapse"]').addEventListener('click', toggleCollapse);
+    els.meetingSelect.addEventListener('change', () => {
+      state.meetingType = els.meetingSelect.value;
+      scheduleCoaching(true);
+    });
+    els.pauseTranscriptBtn.addEventListener('click', () => {
+      state.transcriptionPaused = !state.transcriptionPaused;
+      els.pauseTranscriptBtn.textContent = state.transcriptionPaused ? '⏸ Transcrição' : '▶ Transcrição';
+      els.pauseTranscriptBtn.classList.toggle('active', state.transcriptionPaused);
+      els.pauseTranscriptBtn.classList.toggle('danger', state.transcriptionPaused);
+    });
+    els.pauseCoachBtn.addEventListener('click', () => {
+      state.coachingPaused = !state.coachingPaused;
+      els.pauseCoachBtn.textContent = state.coachingPaused ? '⏸ Coach' : '▶ Coach';
+      els.pauseCoachBtn.classList.toggle('active', state.coachingPaused);
+      els.pauseCoachBtn.classList.toggle('danger', state.coachingPaused);
+      if (!state.coachingPaused) scheduleCoaching(true);
+      else clearTimeout(coachingTimer);
+    });
 
+    refreshMeetingTypeOptions();
     renderTranscriptFull();
     renderCoachFull();
     switchTab('transcript');
+  }
+
+  // Populate the meeting-type dropdown from saved playbooks.
+  function refreshMeetingTypeOptions() {
+    if (!els) return;
+    const playbooks = state.settings?.playbooks || [];
+    const opts = ['<option value="auto">🤖 Seleção automática</option>']
+      .concat(playbooks.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`));
+    els.meetingSelect.innerHTML = opts.join('');
+    els.meetingSelect.value = state.meetingType;
   }
 
   function toggleCollapse() {

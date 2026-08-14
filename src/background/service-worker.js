@@ -7,6 +7,19 @@ const TAG = '[meet-coach:sw]';
 const OFFSCREEN_URL = 'src/offscreen/offscreen.html';
 let offscreenReady = false;
 
+const DEFAULT_PLAYBOOK_TEXT = `# Descoberta — Primeira call (BANT/SPIN)
+
+Objetivo: entender dores, qualificar e agendar próximo passo.
+
+## Etapas
+1. Abertura: confirme contexto e tempo em 30s
+2. Situação (SPIN): como opera hoje, ferramentas, time
+3. Problema (SPIN): qual o maior gargalo? impacta o quê?
+4. Implicação (SPIN): o que acontece se não resolver? custo disso?
+5. Necessidade (SPIN): como seria o ideal? o que resolveria agora?
+6. BANT: Budget, Authority, Need, Timeline
+7. Encerramento: resuma dor + próximos passos com data`;
+
 const DEFAULT_SETTINGS = {
   autoStart: true,
   captureMic: true,
@@ -14,14 +27,19 @@ const DEFAULT_SETTINGS = {
   captionLang: 'pt-BR',
   coachingEnabled: true,
   coachingIntervalSeconds: 30,
+  llmProvider: 'minimax',
   llmEndpoint: 'https://api.minimaxi.chat/v1/chat/completions',
   llmApiKey: '',
   llmModel: 'MiniMax-Text-01',
-  playbook: '',
+  sttProvider: 'whisper-cpp',
   sttEnabled: false,
   sttEndpoint: 'http://localhost:8080/v1/audio/transcriptions',
   sttModel: '',
   sttApiKey: '',
+  playbooks: [
+    { id: 'pb-default', name: 'Descoberta (padrão)', summary: 'Primeira call para entender dores e qualificar (BANT)', text: DEFAULT_PLAYBOOK_TEXT },
+  ],
+  activePlaybook: 'auto',
 };
 
 chrome.runtime.onInstalled.addListener(() => {
