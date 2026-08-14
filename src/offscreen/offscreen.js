@@ -107,11 +107,21 @@ function pickMime() {
 
 function stopCapture() {
   clearInterval(chunkTimer); chunkTimer = null;
-  if (recorder && recorder.state !== 'inactive') {
-    try { recorder.stop(); } catch {}
+  if (recorder) {
+    // Detach handlers so the pending onstop doesn't fire a stale flush.
+    recorder.onstop = null;
+    recorder.ondataavailable = null;
+    recorder.onerror = null;
+    if (recorder.state !== 'inactive') {
+      try { recorder.stop(); } catch {}
+    }
   }
   recorder = null;
-  if (mediaStream) { mediaStream.getTracks().forEach((t) => t.stop()); mediaStream = null; }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => { t.stop(); t.enabled = false; });
+    mediaStream = null;
+  }
+  chunks = [];
 }
 
 let sttErrorCount = 0;

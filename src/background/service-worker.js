@@ -84,8 +84,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg?.type === 'stop-tab-stt') {
-    chrome.runtime.sendMessage({ type: 'offscreen:stop' }).catch(() => {});
-    sendResponse({ ok: true });
+    // Wait for the offscreen document to actually stop + release tracks
+    // before responding, so the caller can safely start a new capture.
+    chrome.runtime.sendMessage({ type: 'offscreen:stop' })
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: true }));
     return true;
   }
   return false;

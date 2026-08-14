@@ -64,6 +64,11 @@ async function startTabSttWithGesture() {
     const settings = await chrome.runtime.sendMessage({ type: 'get-settings' });
     const s = settings?.settings || {};
     if (!s.sttEnabled || !s.sttEndpoint) return; // STT disabled, nothing to do
+    // Stop any existing capture first — Chrome rejects getMediaStreamId with
+    // "Cannot capture a tab with an active stream" if a prior stream is live.
+    await chrome.runtime.sendMessage({ type: 'stop-tab-stt' }).catch(() => {});
+    // Give the offscreen document time to release the MediaStream tracks.
+    await new Promise((r) => setTimeout(r, 400));
     const streamId = await getStreamIdForTab(activeTab.id);
     await chrome.runtime.sendMessage({
       type: 'start-tab-stt',
