@@ -13,6 +13,9 @@ let mediaStream = null;
 let recorder = null;
 let chunks = [];
 let currentMime = '';
+// Audio playback element: tabCapture may mute the tab's speakers, so we
+// play the captured stream back here so the user keeps hearing the meeting.
+let playbackAudio = null;
 let sttConfig = null;
 let chunkTimer = null;
 
@@ -61,6 +64,17 @@ async function startCapture(streamId) {
   // Ensure the track is enabled/unmuted.
   tracks.forEach((t) => { t.enabled = true; });
   console.log(TAG, 'tab audio track:', tracks[0].label || '(sem nome)', 'muted:', tracks[0].muted);
+
+  // Play the captured audio back so the user keeps hearing the meeting.
+  // tabCapture can divert the tab's audio away from the speakers; routing it
+  // through this <audio> element restores audibility without echo (the
+  // captured stream replaces, not duplicates, the tab's output path).
+  if (playbackAudio) { try { playbackAudio.pause(); } catch {} playbackAudio = null; }
+  playbackAudio = new Audio();
+  playbackAudio.srcObject = mediaStream;
+  playbackAudio.autoplay = true;
+  playbackAudio.volume = 1;
+  playbackAudio.play().catch((e) => console.warn(TAG, 'playback play() failed', e?.message || e));
 
   // Recording strategy: record in self-contained segments. Each segment is
   // finalized with stop() so its Blob has a complete webm header (using
@@ -120,6 +134,10 @@ function stopCapture() {
   if (mediaStream) {
     mediaStream.getTracks().forEach((t) => { t.stop(); t.enabled = false; });
     mediaStream = null;
+  }
+  if (playbackAudio) {
+    try { playbackAudio.pause(); playbackAudio.srcObject = null; } catch {}
+    playbackAudio = null;
   }
   chunks = [];
 }
