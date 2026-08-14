@@ -64,6 +64,11 @@
     }
     if (msg?.type === 'start') { start(); sendResponse({ ok: true }); return true; }
     if (msg?.type === 'stop') { stop(); sendResponse({ ok: true }); return true; }
+    if (msg?.type === 'restart') {
+      stop();
+      setTimeout(() => { start(); sendResponse({ ok: true }); }, 250);
+      return true;
+    }
     if (msg?.type === 'toggle-collapse') { toggleCollapse(); sendResponse({ ok: true }); return true; }
     if (msg?.type === 'get-state') {
       sendResponse({ running: state.running, transcriptLen: state.transcript.length, tipsLen: state.tips.length });
@@ -443,9 +448,10 @@
       </div>
       <div class="mc-body"></div>
       <div class="mc-footer">
-        <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Aguardando</span></div>
+        <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Parado</span></div>
         <span class="mc-count">0 falas</span>
       </div>
+      <div class="mc-resizer" id="mc-resizer" title="Arraste para redimensionar"></div>
     `;
     document.body.appendChild(root);
 
@@ -475,6 +481,7 @@
       els.pauseTranscriptBtn.textContent = state.transcriptionPaused ? '⏸ Transcrição' : '▶ Transcrição';
       els.pauseTranscriptBtn.classList.toggle('active', state.transcriptionPaused);
       els.pauseTranscriptBtn.classList.toggle('danger', state.transcriptionPaused);
+      updateStatusText();
     });
     els.pauseCoachBtn.addEventListener('click', () => {
       state.coachingPaused = !state.coachingPaused;
@@ -483,6 +490,37 @@
       els.pauseCoachBtn.classList.toggle('danger', state.coachingPaused);
       if (!state.coachingPaused) scheduleCoaching(true);
       else clearTimeout(coachingTimer);
+      updateStatusText();
+    });
+
+    // Restore saved width
+    try {
+      const w = localStorage.getItem('mc-width');
+      if (w) els.root.style.width = `${Math.max(300, Math.min(720, Number(w)))}px`;
+    } catch {}
+
+    // Resize handle drag
+    const resizer = root.querySelector('#mc-resizer');
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      els.root.classList.add('resizing');
+      resizer.classList.add('dragging');
+      const startX = e.clientX;
+      const startW = els.root.offsetWidth;
+      const onMove = (ev) => {
+        const dx = startX - ev.clientX;
+        const newW = Math.max(300, Math.min(720, startW + dx));
+        els.root.style.width = `${newW}px`;
+      };
+      const onUp = () => {
+        els.root.classList.remove('resizing');
+        resizer.classList.remove('dragging');
+        try { localStorage.setItem('mc-width', els.root.offsetWidth); } catch {}
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
     });
 
     refreshMeetingTypeOptions();
@@ -522,7 +560,22 @@
     if (!els) return;
     els.dot.classList.toggle('idle', !active);
     els.statusDot.classList.toggle('idle', !active);
-    els.statusText.textContent = active ? 'Capturando' : 'Parado';
+    updateStatusText();
+  }
+
+  // Reflect runtime pause states in the overlay status text.
+  function updateStatusText() {
+    if (!els) return;
+    if (!state.running) { els.statusText.textContent = 'Parado'; return; }
+    if (state.transcriptionPaused && state.coachingPaused) {
+      els.statusText.textContent = 'Pausado (transcrição e coach)';
+    } else if (state.transcriptionPaused) {
+      els.statusText.textContent = 'Gravando coach · transcrição pausada';
+    } else if (state.coachingPaused) {
+      els.statusText.textContent = 'Gravando transcrição · coach pausado';
+    } else {
+      els.statusText.textContent = 'Gravando';
+    }
   }
 
   function switchTab(tab) {
