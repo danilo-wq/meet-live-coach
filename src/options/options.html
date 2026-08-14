@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Meet Live Coach — Opções</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: 'Google Sans', Roboto, Arial, sans-serif; background: #1f1f1f; color: #e8eaed; margin: 0; padding: 24px; line-height: 1.5; }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .lead { color: #9aa0a6; margin: 0 0 24px; }
+    section { background: #2a2a2a; border: 1px solid #3c4043; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+    h2 { font-size: 15px; margin: 0 0 12px; }
+    label { display: block; font-size: 13px; color: #bdc1c6; margin: 12px 0 4px; }
+    input[type=text], input[type=password], input[type=number], textarea, select { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 7px; border: 1px solid #3c4043; background: #1f1f1f; color: #e8eaed; font: inherit; }
+    textarea { min-height: 220px; resize: vertical; font-family: 'Roboto Mono', ui-monospace, monospace; font-size: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .hint { font-size: 11px; color: #9aa0a6; margin-top: 4px; }
+    .switch { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+    .switch input { width: auto; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    button { font: inherit; padding: 10px 18px; border-radius: 7px; border: 1px solid #3c4043; background: #2a2a2a; color: #e8eaed; cursor: pointer; }
+    button.primary { background: #1a73e8; border-color: #1a73e8; }
+    .saved { color: #30a14e; font-size: 13px; opacity: 0; transition: opacity .2s; }
+    .saved.show { opacity: 1; }
+    code { background: #1f1f1f; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+    .example { white-space: pre-wrap; background: #1f1f1f; border: 1px solid #3c4043; border-radius: 7px; padding: 10px 12px; font-size: 12px; max-height: 220px; overflow: auto; }
+    details { margin-top: 8px; }
+    summary { cursor: pointer; color: #8ab4f8; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Meet Live Coach — Opções</h1>
+    <p class="lead">Configure a captura, o LLM de coaching e cole o seu playbook de vendas.</p>
+
+    <section>
+      <h2>Captura</h2>
+      <div class="switch"><input type="checkbox" id="autoStart" /><label for="autoStart" style="margin:0">Iniciar automaticamente ao detectar um Meet</label></div>
+      <div class="switch"><input type="checkbox" id="captureMic" /><label for="captureMic" style="margin:0">Capturar meu microfone (canal "You")</label></div>
+      <div class="hint">Para os participantes remotos, a extensão lê as legendas nativas do Google Meet (ative o CC na call). Ative o microfone para incluir a sua própria voz como canal separado.</div>
+      <div class="grid">
+        <div>
+          <label for="captionLang">Idioma das legendas (Meet)</label>
+          <input type="text" id="captionLang" list="langs" />
+        </div>
+        <div>
+          <label for="micLang">Idioma do microfone</label>
+          <input type="text" id="micLang" list="langs" />
+        </div>
+      </div>
+      <datalist id="langs">
+        <option value="pt-BR"><option value="pt-PT"><option value="en-US"><option value="es-ES"><option value="es-419">
+      </datalist>
+    </section>
+
+    <section>
+      <h2>Coach (LLM)</h2>
+      <div class="switch"><input type="checkbox" id="coachingEnabled" /><label for="coachingEnabled" style="margin:0">Ativar dicas de coaching em tempo real</label></div>
+      <div class="grid">
+        <div>
+          <label for="llmEndpoint">Endpoint do LLM (OpenAI-compatible)</label>
+          <input type="text" id="llmEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+        </div>
+        <div>
+          <label for="llmModel">Modelo</label>
+          <input type="text" id="llmModel" placeholder="gpt-4o-mini" />
+        </div>
+      </div>
+      <label for="llmApiKey">API Key (deixe vazio se o endpoint não exigir)</label>
+      <input type="password" id="llmApiKey" placeholder="sk-..." />
+      <label for="coachingIntervalSeconds">Intervalo entre análises (segundos)</label>
+      <input type="number" id="coachingIntervalSeconds" min="5" step="5" value="30" />
+      <div class="hint">A cada intervalo, a extensão envia a transcrição recente ao LLM e mostra uma dica no painel "Coach". Compatível com OpenAI, Groq, Together, OpenRouter, etc.</div>
+    </section>
+
+    <section>
+      <h2>Playbook de vendas</h2>
+      <label for="playbook">Cole aqui o seu playbook de vendas. Ele será enviado ao LLM como contexto em cada análise.</label>
+      <textarea id="playbook" placeholder="Ex.:&#10;## Etapas&#10;1. Abertura: apresente-se e confirme o contexto em até 30s&#10;2. Descoberta: faça 3 perguntas de dor (BANT)&#10;..."></textarea>
+      <details>
+        <summary>Ver exemplo de playbook</summary>
+        <div class="example"># Playbook SaaS B2B
+
+## Objetivos da call
+- Confirmar perfil do lead (cargo, time, stack atual)
+- Identificar dor principal
+- Agendar demo técnica
+
+## Estrutura (BANT)
+1. Budget: quem aprova o orçamento?
+2. Authority: você é o decisor?
+3. Need: qual o maior problema hoje?
+4. Timeline: prazo para resolver?
+
+## Gatilos de objeção
+- "Caro" -> ROI em N meses
+- "Sem tempo" -> value-based, quick win
+- "Já usamos X" -> tabela comparativa
+
+## Encerramento
+- Confirmar próximos passos com data
+- Enviar resumo por e-mail
+</div>
+      </details>
+    </section>
+
+    <div class="actions">
+      <button class="primary" id="save">Salvar</button>
+      <button id="reset">Restaurar padrões</button>
+      <span class="saved" id="saved">Salvo!</span>
+    </div>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

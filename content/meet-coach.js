@@ -1,0 +1,518 @@
+/* Meet Live Coach — content script.
+ *
+ * Responsibilities:
+ *  - Detect an active Google Meet call and auto-start.
+ *  - Read the meeting's native closed captions from the DOM (these already
+ *    carry the remote speaker's name) and stream them into a per-speaker
+ *    transcript.
+ *  - Run a local SpeechRecognition on the microphone so the local user's
+ *    own voice ("You") becomes a channel too.
+ *  - Periodically ask an OpenAI-compatible LLM for live sales coaching,
+ *    grounded in the user's playbook.
+ *  - Render an overlay panel with a Transcript tab and a Coach tab.
+ *
+ * All runtime extension APIs are read through `chrome.runtime`/`chrome.storage`
+ * from this ISOLATED-world content script. SpeechRecognition runs directly
+ * here (it requires a user-gesture page context, which a content script on
+ * the page satisfies once the user has interacted with the Meet tab).
+ */
+
+(() => {
+  'use strict';
+
+  const TAG = '[meet-coach]';
+  const MEET_CALL_HINT = 'https://meet.google.com/';
+
+  // ---- State -------------------------------------------------------------
+  const state = {
+    settings: null,
+    running: false,
+    collapsed: false,
+    activeTab: 'transcript', // 'transcript' | 'coach'
+    captionContainer: null,
+    captionObserver: null,
+    seenSpeakers: new Set(),
+    transcript: [],          // { speaker, text, ts, source }
+    tips: [],                // { text, ts }
+    lastCoachAt: 0,
+    micRecognizer: null,
+    micRestartTimer: null,
+    micActive: false,
+    youCurrentText: '',
+    youLastEmit: 0,
+  };
+
+  // ---- Settings ----------------------------------------------------------
+  async function loadSettings() {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'get-settings' }, (res) => {
+        resolve(res?.settings || null);
+      });
+    });
+  }
+
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === 'settings-updated') {
+      loadSettings().then((s) => { state.settings = s; applySettingsSideEffects(); });
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg?.type === 'start') { start(); sendResponse({ ok: true }); return true; }
+    if (msg?.type === 'stop') { stop(); sendResponse({ ok: true }); return true; }
+    if (msg?.type === 'toggle-collapse') { toggleCollapse(); sendResponse({ ok: true }); return true; }
+    if (msg?.type === 'get-state') {
+      sendResponse({ running: state.running, transcriptLen: state.transcript.length, tipsLen: state.tips.length });
+      return true;
+    }
+    return false;
+  });
+
+  function applySettingsSideEffects() {
+    const s = state.settings;
+    if (!s) return;
+    if (state.running) {
+      if (s.captureMic && !state.micActive) startMic();
+      if (!s.captureMic && state.micActive) stopMic();
+      scheduleCoaching(true);
+    }
+  }
+
+  // ---- Lifecycle ---------------------------------------------------------
+  async function maybeStart() {
+    if (!location.href.startsWith(MEET_CALL_HINT)) return;
+    state.settings = await loadSettings();
+    if (!state.settings?.autoStart) return;
+    if (state.running) return;
+    start();
+  }
+
+  function start() {
+    if (state.running) return;
+    state.running = true;
+    state.transcript = [];
+    state.tips = [];
+    state.lastCoachAt = 0;
+    mountOverlay();
+    startCaptionCapture();
+    if (state.settings?.captureMic) startMic();
+    scheduleCoaching(true);
+    setHeaderStatus(true);
+    console.log(TAG, 'started');
+  }
+
+  function stop() {
+    if (!state.running) return;
+    state.running = false;
+    if (state.captionObserver) state.captionObserver.disconnect();
+    state.captionObserver = null;
+    state.captionContainer = null;
+    stopMic();
+    setHeaderStatus(false);
+    console.log(TAG, 'stopped');
+  }
+
+  // ---- Caption capture (remote speakers) --------------------------------
+  // Google Meet renders live captions inside a container with class names
+  // that change between releases. We use a resilient selector covering the
+  // currently-known structures, plus an image-based fallback.
+  const CAPTION_SELECTORS = [
+    '.a4Qtq',                       // classic caption line wrapper
+    'div[role="button"] div[aria-level]', // caption content with speaker
+    '.GamlYe',                      // newer caption caption text container
+    'div[jsname][class] span[style]',     // generic last resort spans
+  ];
+
+  // Each caption "card" groups a speaker name + their current utterance.
+  function findCaptionCards(root = document) {
+    // The most stable signal historically: caption lines live near an avatar
+    // image from googleusercontent. We locate the ancestor that holds both.
+    const cards = [];
+    const seen = new Set();
+    const imgs = Array.from(root.querySelectorAll('img')).filter((i) =>
+      /googleusercontent\.com/.test(i.src || '')
+    );
+    for (const img of imgs) {
+      const card = img.closest('div');
+      if (!card || seen.has(card)) continue;
+      const { person, text } = extractCaptionData(card);
+      if (text) { seen.add(card); cards.push({ node: card, person: person || 'Participante', text }); }
+    }
+    return cards;
+  }
+
+  function extractCaptionData(node) {
+    // Try direct child text (speaker name) then leaf spans (utterance text).
+    let person = '';
+    // Many layouts put the speaker name in a div with direct text content.
+    const nameEl = node.querySelector('div[aria-level], div[role="listitem"]');
+    if (nameEl) person = (nameEl.textContent || '').trim();
+
+    const spans = Array.from(node.querySelectorAll('span')).filter((s) => s.children.length === 0);
+    let text = spans.map((s) => (s.textContent || '').trim()).join(' ').trim();
+    if (!text) text = (node.textContent || '').trim();
+    return { person, text };
+  }
+
+  function pollCaptionsOnce() {
+    const cards = findCaptionCards();
+    for (const c of cards) appendTranscript(c.person, c.text, 'caption');
+  }
+
+  let captionPollTimer = null;
+  function startCaptionCapture() {
+    if (captionPollTimer) clearInterval(captionPollTimer);
+    captionPollTimer = setInterval(pollCaptionsOnce, 1000);
+
+    // Also use a MutationObserver to catch new caption cards immediately.
+    attachCaptionObserver();
+    // Keep trying to (re)attach as the captions container appears/disappears.
+    if (state._attachInterval) clearInterval(state._attachInterval);
+    state._attachInterval = setInterval(attachCaptionObserver, 2000);
+  }
+
+  function attachCaptionObserver() {
+    if (!state.running) return;
+    if (state.captionContainer && document.contains(state.captionContainer)) return;
+    const container = findCaptionContainer();
+    if (container) {
+      state.captionContainer = container;
+      if (!state.captionObserver) {
+        state.captionObserver = new MutationObserver(() => pollCaptionsOnce());
+      }
+      state.captionObserver.observe(container, { childList: true, subtree: true, characterData: true });
+    }
+  }
+
+  function findCaptionContainer() {
+    // Heuristic: the bottom-centered captions box. Prefer elements with a
+    // known caption-related class; otherwise fall back to the subtree holding
+    // googleusercontent avatar images.
+    for (const sel of CAPTION_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el) return el.closest('section, div[role="region"], div') || el;
+    }
+    const img = Array.from(document.querySelectorAll('img')).find((i) =>
+      /googleusercontent\.com/.test(i.src || '')
+    );
+    if (img) return img.closest('div')?.parentElement || null;
+    return null;
+  }
+
+  // ---- Local microphone channel ("You") ---------------------------------
+  function startMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { console.warn(TAG, 'SpeechRecognition unavailable'); return; }
+    stopMic();
+    const r = new SR();
+    r.lang = state.settings?.micLang || 'pt-BR';
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+    r.onresult = (e) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        const txt = res[0].transcript;
+        if (res.isFinal) {
+          emitYouUtterance(txt.trim());
+          state.youCurrentText = '';
+        } else {
+          interim += txt;
+        }
+      }
+      state.youCurrentText = interim;
+    };
+    r.onerror = (e) => { console.warn(TAG, 'mic error', e.error); };
+    r.onend = () => {
+      state.micActive = false;
+      // Auto-restart while running (Chrome stops recognition after silence).
+      if (state.running && state.settings?.captureMic) {
+        clearTimeout(state.micRestartTimer);
+        state.micRestartTimer = setTimeout(() => {
+          if (!state.running || !state.settings?.captureMic) return;
+          try { r.start(); state.micActive = true; } catch {}
+        }, 400);
+      }
+    };
+    try { r.start(); state.micActive = true; state.micRecognizer = r; }
+    catch (e) { console.warn(TAG, 'mic start failed', e); }
+  }
+
+  function stopMic() {
+    clearTimeout(state.micRestartTimer);
+    if (state.micRecognizer) {
+      try { state.micRecognizer.onresult = null; state.micRecognizer.onend = null; state.micRecognizer.stop(); } catch {}
+      state.micRecognizer = null;
+    }
+    state.micActive = false;
+    if (state.youCurrentText) { emitYouUtterance(state.youCurrentText.trim()); state.youCurrentText = ''; }
+  }
+
+  function emitYouUtterance(text) {
+    if (!text) return;
+    const now = Date.now();
+    // Merge short consecutive local utterances (<1.5s gap) into one line.
+    if (now - state.youLastEmit < 1500 && state.transcript.length &&
+        state.transcript[state.transcript.length - 1].speaker === 'You') {
+      const last = state.transcript[state.transcript.length - 1];
+      last.text = `${last.text} ${text}`.trim();
+      last.ts = now;
+      renderTranscriptUpdate(last, 'update');
+    } else {
+      appendTranscript('You', text, 'mic');
+      state.youLastEmit = now;
+    }
+  }
+
+  // ---- Transcript store --------------------------------------------------
+  // Dedup similar caption text per speaker within a short window to avoid
+  // duplicating partial captions that Google emits incrementally.
+  function appendTranscript(speaker, text, source) {
+    const norm = normalizeText(text);
+    if (!norm) return;
+    const last = state.transcript[state.transcript.length - 1];
+    if (last && last.speaker === speaker && source === 'caption') {
+      // If the new text extends the previous one, replace; if it is a near
+      // duplicate, ignore.
+      if (norm === last._norm) return;
+      if (last._norm && norm.startsWith(last._norm)) {
+        last.text = text; last._norm = norm; last.ts = Date.now();
+        renderTranscriptUpdate(last, 'update');
+        return;
+      }
+    }
+    const entry = { speaker: speaker || 'Participante', text, ts: Date.now(), source, _norm: norm };
+    state.transcript.push(entry);
+    state.seenSpeakers.add(entry.speaker);
+    renderTranscriptUpdate(entry, 'append');
+  }
+
+  function normalizeText(t) { return (t || '').replace(/\s+/g, ' ').trim(); }
+
+  // ---- Coaching ----------------------------------------------------------
+  let coachingTimer = null;
+  function scheduleCoaching(immediate = false) {
+    clearTimeout(coachingTimer);
+    const s = state.settings;
+    if (!s || !s.coachingEnabled || !s.llmEndpoint) return;
+    const interval = Math.max(5, s.coachingIntervalSeconds || 30) * 1000;
+    coachingTimer = setTimeout(runCoaching, immediate ? 1500 : interval);
+  }
+
+  async function runCoaching() {
+    const s = state.settings;
+    if (!s || !s.coachingEnabled || !s.llmEndpoint) return;
+    const now = Date.now();
+    const windowMs = Math.max(30000, (s.coachingIntervalSeconds || 30) * 1000 * 3);
+    const recent = state.transcript.filter((t) => now - t.ts < windowMs);
+    if (recent.length === 0) { scheduleCoaching(false); return; }
+
+    const transcriptText = recent.map((t) =>
+      `${t.speaker}: ${t.text}`).join('\n');
+
+    const system = [
+      'Você é um live coach de vendas em tempo real durante uma call no Google Meet.',
+      'Analise a transcrição parcial e dê dicas curtas, acionáveis e específicas',
+      'com base no playbook de vendas fornecido. Seja direto, no máximo 3 bullets.',
+      'Não invente informações que não estejam no transcript. Se faltar contexto,',
+      'indique a próxima pergunta ou etapa do playbook a explorar.',
+      s.playbook ? `\n--- PLAYBOOK DE VENDAS ---\n${s.playbook}\n--- FIM DO PLAYBOOK ---` : '',
+    ].join(' ');
+
+    const body = {
+      model: s.llmModel,
+      temperature: 0.4,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: `Transcrição recente:\n${transcriptText}` },
+      ],
+    };
+
+    try {
+      const res = await fetch(s.llmEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(s.llmApiKey ? { Authorization: `Bearer ${s.llmApiKey}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`LLM HTTP ${res.status}`);
+      const data = await res.json();
+      const tip = data?.choices?.[0]?.message?.content?.trim();
+      if (tip) {
+        const entry = { text: tip, ts: Date.now() };
+        state.tips.push(entry);
+        renderTip(entry);
+      }
+    } catch (e) {
+      console.warn(TAG, 'coaching failed', e);
+    } finally {
+      state.lastCoachAt = Date.now();
+      scheduleCoaching(false);
+    }
+  }
+
+  // ---- Overlay UI --------------------------------------------------------
+  let els = null;
+
+  function mountOverlay() {
+    if (document.getElementById('mc-root')) return;
+    const root = document.createElement('div');
+    root.id = 'mc-root';
+    root.className = 'mc-root';
+    root.innerHTML = `
+      <div class="mc-header">
+        <div class="mc-title"><span class="mc-dot idle"></span> Meet Live Coach</div>
+        <div>
+          <button class="mc-iconbtn" data-act="tab" title="Transcrição/Coach">⇄</button>
+          <button class="mc-iconbtn" data-act="collapse" title="Recolher">–</button>
+        </div>
+      </div>
+      <div class="mc-tabs">
+        <div class="mc-tab active" data-tab="transcript">Transcrição</div>
+        <div class="mc-tab" data-tab="coach">Coach</div>
+      </div>
+      <div class="mc-body"></div>
+      <div class="mc-footer">
+        <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Aguardando</span></div>
+        <div class="mc-count">0 falas</div>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    els = {
+      root,
+      body: root.querySelector('.mc-body'),
+      dot: root.querySelector('.mc-title .mc-dot'),
+      statusDot: root.querySelector('.mc-status .mc-dot'),
+      statusText: root.querySelector('.mc-status-text'),
+      count: root.querySelector('.mc-count'),
+      tabs: Array.from(root.querySelectorAll('.mc-tab')),
+    };
+
+    els.tabs.forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+    root.querySelector('[data-act="tab"]').addEventListener('click', () =>
+      switchTab(state.activeTab === 'transcript' ? 'coach' : 'transcript'));
+    root.querySelector('[data-act="collapse"]').addEventListener('click', toggleCollapse);
+
+    renderTranscriptFull();
+    renderCoachFull();
+    switchTab('transcript');
+  }
+
+  function toggleCollapse() {
+    state.collapsed = !state.collapsed;
+    if (!els) return;
+    els.root.style.display = state.collapsed ? 'none' : 'flex';
+    if (state.collapsed) {
+      const fab = document.createElement('div');
+      fab.className = 'mc-collapsed';
+      fab.id = 'mc-fab';
+      fab.textContent = '🎤';
+      fab.title = 'Abrir Meet Live Coach';
+      fab.addEventListener('click', toggleCollapse);
+      document.body.appendChild(fab);
+    } else {
+      document.getElementById('mc-fab')?.remove();
+    }
+  }
+
+  function setHeaderStatus(active) {
+    if (!els) return;
+    els.dot.classList.toggle('idle', !active);
+    els.statusDot.classList.toggle('idle', !active);
+    els.statusText.textContent = active ? 'Capturando' : 'Parado';
+  }
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    if (!els) return;
+    els.tabs.forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+    if (tab === 'transcript') { renderTranscriptFull(); els.body.scrollTop = els.body.scrollHeight; }
+    else renderCoachFull();
+  }
+
+  function renderTranscriptFull() {
+    if (!els || state.activeTab !== 'transcript') return;
+    els.body.innerHTML = `<div class="mc-transcript">${state.transcript.map(msgHtml).join('')}</div>` + (state.transcript.length ? '' : `<div class="mc-empty">A transcrição aparece aqui quando as legendas do Meet ou seu microfone estiverem ativos.</div>`);
+    updateCount();
+  }
+
+  function renderTranscriptUpdate(entry, mode) {
+    if (!els || state.activeTab !== 'transcript') return;
+    const wrap = els.body.querySelector('.mc-transcript');
+    if (!wrap) { renderTranscriptFull(); return; }
+    if (mode === 'update') {
+      const existing = wrap.querySelector(`[data-id="${entry.ts}"]`) || wrap.lastElementChild;
+      if (existing) { existing.outerHTML = msgHtml(entry); updateCount(); return; }
+    }
+    // Remove empty placeholder if present.
+    els.body.querySelector('.mc-empty')?.remove();
+    wrap.insertAdjacentHTML('beforeend', msgHtml(entry));
+    els.body.scrollTop = els.body.scrollHeight;
+    updateCount();
+  }
+
+  function renderCoachFull() {
+    if (!els || state.activeTab !== 'coach') return;
+    els.body.innerHTML = `<div class="mc-coach">${state.tips.map(tipHtml).join('')}</div>` + (state.tips.length ? '' : `<div class="mc-empty">As dicas do coach aparecem aqui. Configure o LLM e o playbook de vendas nas opções da extensão.</div>`);
+  }
+
+  function renderTip(entry) {
+    if (!els || state.activeTab !== 'coach') return;
+    const wrap = els.body.querySelector('.mc-coach');
+    if (!wrap) { renderCoachFull(); return; }
+    els.body.querySelector('.mc-empty')?.remove();
+    wrap.insertAdjacentHTML('afterbegin', tipHtml(entry));
+  }
+
+  function msgHtml(entry) {
+    const isYou = entry.speaker === 'You';
+    return `<div class="mc-msg${isYou ? ' you' : ''}" data-id="${entry.ts}">
+      <div class="mc-msg-meta"><span class="mc-speaker${isYou ? ' you' : ''}">${escapeHtml(entry.speaker)}</span><span>${fmtTime(entry.ts)}</span></div>
+      <div class="mc-text">${escapeHtml(entry.text)}</div>
+    </div>`;
+  }
+
+  function tipHtml(entry) {
+    return `<div class="mc-tip"><div class="mc-tip-head">Dica · ${fmtTime(entry.ts)}</div><div class="mc-tip-body">${escapeHtml(entry.text)}</div></div>`;
+  }
+
+  function updateCount() { if (els) els.count.textContent = `${state.transcript.length} falas`; }
+
+  function escapeHtml(s) {
+    return (s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  }
+
+  // ---- Boot --------------------------------------------------------------
+  function boot() {
+    // Only run on actual call URLs (skip landing page). A Meet call URL looks
+    // like https://meet.google.com/xxx-xxxx-xxx.
+    const isCall = /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i.test(location.href);
+    if (!isCall) {
+      // Wait until the user enters a call.
+      const obs = new MutationObserver(() => {
+        if (/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i.test(location.href)) {
+          obs.disconnect();
+          maybeStart();
+        }
+      });
+      const root = document.body || document.documentElement;
+      if (root) obs.observe(root, { childList: true, subtree: true });
+      setTimeout(() => obs.disconnect(), 60000);
+      return;
+    }
+    maybeStart();
+  }
+
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    boot();
+  } else {
+    window.addEventListener('DOMContentLoaded', boot, { once: true });
+  }
+})();

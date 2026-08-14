@@ -1,0 +1,12 @@
+# Node / build artifacts (none needed — JS puro, sem bundler)
+node_modules/
+dist/
+*.zip
+*.crx
+*.pem
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.log

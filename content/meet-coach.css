@@ -1,0 +1,36 @@
+/* Meet Live Coach overlay. High specificity + !important to survive Meet's styles. */
+.mc-root { position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important; width: 380px !important; z-index: 999999 !important; display: flex !important; flex-direction: column !important; font-family: 'Google Sans', Roboto, Arial, sans-serif !important; background: #1f1f1f !important; color: #e8eaed !important; box-shadow: -4px 0 24px rgba(0,0,0,.45) !important; border-left: 1px solid #3c4043 !important; font-size: 13px !important; line-height: 1.35 !important; }
+
+.mc-header { display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 10px 14px !important; background: #202124 !important; border-bottom: 1px solid #3c4043 !important; }
+.mc-title { font-weight: 600 !important; font-size: 14px !important; display: flex !important; align-items: center !important; gap: 8px !important; }
+.mc-dot { width: 9px !important; height: 9px !important; border-radius: 50% !important; background: #ea4335 !important; box-shadow: 0 0 6px #ea4335 !important; animation: mc-pulse 1.4s infinite !important; }
+.mc-dot.idle { background: #80868b !important; box-shadow: none !important; animation: none !important; }
+@keyframes mc-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.mc-iconbtn { cursor: pointer !important; color: #9aa0a6 !important; background: transparent !important; border: none !important; font-size: 16px !important; padding: 4px !important; }
+.mc-iconbtn:hover { color: #e8eaed !important; }
+
+.mc-tabs { display: flex !important; border-bottom: 1px solid #3c4043 !important; }
+.mc-tab { flex: 1 !important; text-align: center !important; padding: 9px 0 !important; cursor: pointer !important; color: #9aa0a6 !important; font-weight: 500 !important; border-bottom: 2px solid transparent !important; background: transparent !important; }
+.mc-tab.active { color: #8ab4f8 !important; border-bottom-color: #8ab4f8 !important; }
+
+.mc-body { flex: 1 !important; overflow-y: auto !important; padding: 8px 12px !important; }
+.mc-body::-webkit-scrollbar { width: 8px !important; }
+.mc-body::-webkit-scrollbar-thumb { background: #3c4043 !important; border-radius: 4px !important; }
+
+.mc-transcript { display: flex !important; flex-direction: column !important; gap: 8px !important; }
+.mc-msg { display: flex !important; flex-direction: column !important; gap: 2px !important; }
+.mc-msg-meta { font-size: 11px !important; color: #9aa0a6 !important; display: flex !important; justify-content: space-between !important; gap: 8px !important; }
+.mc-speaker { font-weight: 600 !important; color: #8ab4f8 !important; }
+.mc-speaker.you { color: #fdd663 !important; }
+.mc-text { background: #2a2a2a !important; padding: 7px 10px !important; border-radius: 8px !important; word-break: break-word !important; white-space: pre-wrap !important; }
+.mc-msg.you .mc-text { background: #3b2e00 !important; }
+
+.mc-coach { display: flex !important; flex-direction: column !important; gap: 8px !important; }
+.mc-tip { background: #062e23 !important; border-left: 3px solid #30a14e !important; padding: 9px 11px !important; border-radius: 6px !important; }
+.mc-tip-head { font-size: 11px !important; text-transform: uppercase !important; letter-spacing: .04em !important; color: #30a14e !important; margin-bottom: 4px !important; font-weight: 600 !important; }
+.mc-tip-body { white-space: pre-wrap !important; word-break: break-word !important; }
+.mc-empty { color: #80868b !important; text-align: center !important; padding: 24px 8px !important; font-style: italic !important; }
+
+.mc-footer { padding: 8px 12px !important; border-top: 1px solid #3c4043 !important; background: #202124 !important; font-size: 11px !important; color: #9aa0a6 !important; display: flex !important; justify-content: space-between !important; align-items: center !important; }
+.mc-status { display: flex !important; align-items: center !important; gap: 6px !important; }
+.mc-collapsed { position: fixed !important; top: 16px !important; right: 16px !important; z-index: 999999 !important; width: 44px !important; height: 44px !important; border-radius: 50% !important; background: #1f1f1f !important; border: 1px solid #3c4043 !important; color: #e8eaed !important; display: flex !important; align-items: center !important; justify-content: center !important; cursor: pointer !important; box-shadow: 0 4px 14px rgba(0,0,0,.4) !important; font-size: 18px !important; }
