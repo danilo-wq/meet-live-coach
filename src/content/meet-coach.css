@@ -3,9 +3,9 @@
 
 :root { --mc-navy:#002060; --mc-blue:#33279B; --mc-teal:#00BA8A; --mc-mint:#00D38B; --mc-white:#FFFFFF; --mc-bg:#FFFFFF; --mc-surface:#F5F7FB; --mc-border:#E2E8F0; --mc-muted:#5b6b8a; --mc-text:#1b2333; }
 
-.mc-root { position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important; width: 380px !important; z-index: 999999 !important; display: flex !important; flex-direction: column !important; font-family: 'Montserrat', system-ui, sans-serif !important; background: var(--mc-bg) !important; color: var(--mc-text) !important; box-shadow: -4px 0 24px rgba(0,32,96,.12) !important; border-left: 1px solid var(--mc-border) !important; font-size: 13px !important; line-height: 1.4 !important; }
+.mc-root { position: fixed !important; bottom: 20px !important; right: 20px !important; width: 380px !important; max-height: 70vh !important; height: 520px !important; z-index: 999999 !important; display: flex !important; flex-direction: column !important; font-family: 'Montserrat', system-ui, sans-serif !important; background: var(--mc-bg) !important; color: var(--mc-text) !important; box-shadow: 0 8px 32px rgba(0,32,96,.18) !important; border: 1px solid var(--mc-border) !important; border-radius: 16px !important; overflow: hidden !important; font-size: 13px !important; line-height: 1.4 !important; }
 
-.mc-header { display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 14px !important; background: var(--mc-bg) !important; border-bottom: 2px solid var(--mc-teal) !important; }
+.mc-header { display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 12px 14px !important; background: var(--mc-bg) !important; border-bottom: 2px solid var(--mc-teal) !important; cursor: move !important; user-select: none !important; }
 .mc-title { font-weight: 700 !important; font-size: 15px !important; color: var(--mc-navy) !important; display: flex !important; align-items: center !important; gap: 8px !important; }
 .mc-logo { height: 26px !important; width: auto !important; display: block !important; }
 .mc-dot { width: 9px !important; height: 9px !important; border-radius: 50% !important; background: var(--mc-teal) !important; box-shadow: 0 0 6px var(--mc-teal) !important; animation: mc-pulse 1.4s infinite !important; }
@@ -52,7 +52,8 @@
 .mc-status { display: flex !important; align-items: center !important; gap: 6px !important; }
 .mc-collapsed { position: fixed !important; top: 16px !important; right: 16px !important; z-index: 999999 !important; width: 46px !important; height: 46px !important; border-radius: 50% !important; background: var(--mc-bg) !important; border: 2px solid var(--mc-teal) !important; color: var(--mc-teal) !important; display: flex !important; align-items: center !important; justify-content: center !important; cursor: pointer !important; box-shadow: 0 4px 14px rgba(0,32,96,.18) !important; font-size: 18px !important; }
 
-/* Resize handle */
-.mc-resizer { position: absolute !important; left: 0 !important; top: 0 !important; bottom: 0 !important; width: 6px !important; cursor: ew-resize !important; background: transparent !important; z-index: 10 !important; }
-.mc-resizer:hover, .mc-resizer.dragging { background: rgba(0,186,138,.25) !important; }
+/* Resize handle (bottom-right corner of floating panel) */
+.mc-resizer { position: absolute !important; right: 0 !important; bottom: 0 !important; width: 18px !important; height: 18px !important; cursor: nwse-resize !important; z-index: 10 !important; background: transparent !important; }
+.mc-resizer::after { content: '' !important; position: absolute !important; right: 3px !important; bottom: 3px !important; width: 8px !important; height: 8px !important; border-right: 2px solid var(--mc-border) !important; border-bottom: 2px solid var(--mc-border) !important; }
+.mc-resizer:hover::after { border-color: var(--mc-teal) !important; }
 .mc-root.resizing { user-select: none !important; transition: none !important; }

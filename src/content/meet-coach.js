@@ -451,7 +451,7 @@
         <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Parado</span></div>
         <span class="mc-count">0 falas</span>
       </div>
-      <div class="mc-resizer" id="mc-resizer" title="Arraste para redimensionar"></div>
+      <div class="mc-resizer" id="mc-resizer" title="Arraste o canto para redimensionar"></div>
     `;
     document.body.appendChild(root);
 
@@ -493,29 +493,78 @@
       updateStatusText();
     });
 
-    // Restore saved width
+    // Restore saved size
     try {
       const w = localStorage.getItem('mc-width');
+      const h = localStorage.getItem('mc-height');
       if (w) els.root.style.width = `${Math.max(300, Math.min(720, Number(w)))}px`;
+      if (h) els.root.style.height = `${Math.max(360, Math.min(window.innerHeight - 40, Number(h)))}px`;
     } catch {}
 
-    // Resize handle drag
+    // Drag panel by header (skip if clicking a button/select)
+    const header = root.querySelector('.mc-header');
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button, select, .mc-meeting-select')) return;
+      e.preventDefault();
+      const panel = els.root;
+      const startX = e.clientX - panel.offsetLeft;
+      const startY = e.clientY - panel.offsetTop;
+      const onMove = (ev) => {
+        let nx = ev.clientX - startX;
+        let ny = ev.clientY - startY;
+        nx = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, nx));
+        ny = Math.max(0, Math.min(window.innerHeight - 40, ny));
+        panel.style.left = `${nx}px`;
+        panel.style.top = `${ny}px`;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+      };
+      const onUp = () => {
+        try {
+          localStorage.setItem('mc-left', panel.style.left);
+          localStorage.setItem('mc-top', panel.style.top);
+        } catch {}
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // Restore saved position
+    try {
+      const l = localStorage.getItem('mc-left');
+      const t = localStorage.getItem('mc-top');
+      if (l && t) {
+        els.root.style.left = l;
+        els.root.style.top = t;
+        els.root.style.right = 'auto';
+        els.root.style.bottom = 'auto';
+      }
+    } catch {}
+
+    // Resize handle drag (bottom-right corner)
     const resizer = root.querySelector('#mc-resizer');
     resizer.addEventListener('mousedown', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       els.root.classList.add('resizing');
-      resizer.classList.add('dragging');
       const startX = e.clientX;
+      const startY = e.clientY;
       const startW = els.root.offsetWidth;
+      const startH = els.root.offsetHeight;
       const onMove = (ev) => {
-        const dx = startX - ev.clientX;
-        const newW = Math.max(300, Math.min(720, startW + dx));
+        const newW = Math.max(300, Math.min(720, startW + (ev.clientX - startX)));
+        const newH = Math.max(360, Math.min(window.innerHeight - 40, startH + (ev.clientY - startY)));
         els.root.style.width = `${newW}px`;
+        els.root.style.height = `${newH}px`;
       };
       const onUp = () => {
         els.root.classList.remove('resizing');
-        resizer.classList.remove('dragging');
-        try { localStorage.setItem('mc-width', els.root.offsetWidth); } catch {}
+        try {
+          localStorage.setItem('mc-width', els.root.offsetWidth);
+          localStorage.setItem('mc-height', els.root.offsetHeight);
+        } catch {}
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
