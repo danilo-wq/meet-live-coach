@@ -16,7 +16,9 @@
     "tabs",
     "storage",
     "scripting",
-    "downloads"
+    "downloads",
+    "tabCapture",
+    "offscreen"
   ],
 
   "host_permissions": [
@@ -24,7 +26,10 @@
     "https://*.openai.com/*",
     "https://*.groq.com/*",
     "https://openrouter.ai/*",
-    "https://api.together.ai/*"
+    "https://api.together.ai/*",
+    "https://api.minimaxi.chat/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
 
   "background": {
@@ -39,6 +44,13 @@
       "css": ["src/content/meet-coach.css"],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["src/offscreen/offscreen.html", "src/offscreen/offscreen.js"],
+      "matches": ["https://meet.google.com/*"]
     }
   ],
 

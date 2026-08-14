@@ -38,6 +38,7 @@
     micRecognizer: null,
     micRestartTimer: null,
     micActive: false,
+    tabSttActive: false,
     youCurrentText: '',
     youLastEmit: 0,
   };
@@ -64,6 +65,12 @@
       sendResponse({ running: state.running, transcriptLen: state.transcript.length, tipsLen: state.tips.length });
       return true;
     }
+    if (msg?.type === 'stt-result') {
+      // Transcribed tab audio -> "Tab" channel.
+      if (msg.text) appendTranscript('Tab', msg.text, 'tab');
+      sendResponse({ ok: true });
+      return true;
+    }
     return false;
   });
 
@@ -73,6 +80,8 @@
     if (state.running) {
       if (s.captureMic && !state.micActive) startMic();
       if (!s.captureMic && state.micActive) stopMic();
+      if (s.sttEnabled && s.sttEndpoint && !state.tabSttActive) startTabStt();
+      if ((!s.sttEnabled || !s.sttEndpoint) && state.tabSttActive) stopTabStt();
       scheduleCoaching(true);
     }
   }
@@ -95,6 +104,7 @@
     mountOverlay();
     startCaptionCapture();
     if (state.settings?.captureMic) startMic();
+    if (state.settings?.sttEnabled && state.settings?.sttEndpoint) startTabStt();
     scheduleCoaching(true);
     setHeaderStatus(true);
     console.log(TAG, 'started');
@@ -107,8 +117,35 @@
     state.captionObserver = null;
     state.captionContainer = null;
     stopMic();
+    stopTabStt();
     setHeaderStatus(false);
     console.log(TAG, 'stopped');
+  }
+
+  // ---- Tab audio STT (Whisper / Ollama local) ---------------------------
+  function startTabStt() {
+    const s = state.settings;
+    if (!s || !s.sttEnabled || !s.sttEndpoint || state.tabSttActive) return;
+    state.tabSttActive = true;
+    chrome.runtime.sendMessage({
+      type: 'start-tab-stt',
+      sttEndpoint: s.sttEndpoint,
+      sttModel: s.sttModel,
+      sttApiKey: s.sttApiKey,
+    }, (res) => {
+      if (chrome.runtime.lastError || !res?.ok) {
+        console.warn(TAG, 'tab STT start failed', chrome.runtime.lastError, res);
+        state.tabSttActive = false;
+      } else {
+        console.log(TAG, 'tab STT started ->', s.sttEndpoint);
+      }
+    });
+  }
+
+  function stopTabStt() {
+    if (!state.tabSttActive) return;
+    state.tabSttActive = false;
+    chrome.runtime.sendMessage({ type: 'stop-tab-stt' }, () => void chrome.runtime.lastError);
   }
 
   // ---- Caption capture (remote speakers) --------------------------------
@@ -363,10 +400,13 @@
     root.className = 'mc-root';
     root.innerHTML = `
       <div class="mc-header">
-        <div class="mc-title"><span class="mc-dot idle"></span> Meet Live Coach</div>
-        <div>
-          <button class="mc-iconbtn" data-act="tab" title="Transcrição/Coach">⇄</button>
-          <button class="mc-iconbtn" data-act="collapse" title="Recolher">–</button>
+        <div class="mc-title">
+          <img class="mc-logo" alt="GGV" src="https://ggvinteligencia.com.br/wp-content/uploads/2025/08/Logo-GGV-Branca.png" />
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="mc-dot idle"></span>
+          <button class="mc-iconbtn" data-act="tab" title="Alternar Transcrição/Coach">⇄</button>
+          <button class="mc-iconbtn" data-act="collapse" title="Recolher painel">–</button>
         </div>
       </div>
       <div class="mc-tabs">
@@ -376,7 +416,7 @@
       <div class="mc-body"></div>
       <div class="mc-footer">
         <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Aguardando</span></div>
-        <div class="mc-count">0 falas</div>
+        <span class="mc-count">0 falas</span>
       </div>
     `;
     document.body.appendChild(root);

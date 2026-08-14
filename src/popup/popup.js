@@ -48,6 +48,5 @@ $('startBtn').addEventListener('click', () => sendToTab('start', () => setTimeou
 $('stopBtn').addEventListener('click', () => sendToTab('stop', () => setTimeout(refreshStatus, 200)));
 $('collapseBtn').addEventListener('click', () => sendToTab('toggle-collapse'));
 $('optsBtn').addEventListener('click', () => chrome.runtime.openOptionsPage());
-$('help').addEventListener('click', (e) => { e.preventDefault(); window.open('https://github.com', '_blank'); });
 
 document.addEventListener('DOMContentLoaded', refreshStatus);

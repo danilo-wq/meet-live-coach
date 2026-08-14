@@ -3,34 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <title>Meet Live Coach</title>
+  <link rel="icon" type="image/svg+xml" href="https://ggvinteligencia.com.br/wp-content/uploads/2024/05/Favicon-GGV.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap">
   <style>
+    :root { --ggv-navy:#002060; --ggv-blue:#33279B; --ggv-teal:#00BA8A; --ggv-mint:#00D38B; --ggv-white:#FFFFFF; }
     :root { color-scheme: dark; }
-    body { width: 320px; margin: 0; font-family: 'Google Sans', Roboto, Arial, sans-serif; background: #1f1f1f; color: #e8eaed; }
-    header { padding: 14px 16px; border-bottom: 1px solid #3c4043; }
-    h1 { font-size: 15px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; }
-    .sub { color: #9aa0a6; font-size: 12px; }
+    body { width: 320px; margin: 0; font-family: 'Montserrat', system-ui, sans-serif; background: var(--ggv-navy); color: var(--ggv-white); }
+    header { padding: 14px 16px; border-bottom: 3px solid var(--ggv-teal); display:flex; align-items:center; gap:10px; }
+    header img { height: 28px; }
+    .sub { color: #b8c4e8; font-size: 12px; }
     main { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .row label { font-size: 13px; }
-    .status { font-size: 12px; color: #9aa0a6; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #80868b; box-shadow: 0 0 6px transparent; }
-    .dot.on { background: #30a14e; box-shadow: 0 0 6px #30a14e; }
-    button { font: inherit; border: 1px solid #3c4043; background: #2a2a2a; color: #e8eaed; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #353535; }
-    button.primary { background: #1a73e8; border-color: #1a73e8; }
-    button.primary:hover { background: #1765cc; }
+    .status { font-size: 12px; color: #b8c4e8; display:flex; align-items:center; gap:6px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #5a6488; }
+    .dot.on { background: var(--ggv-teal); box-shadow: 0 0 6px var(--ggv-teal); }
+    button { font: inherit; border: 1px solid var(--ggv-teal); background: transparent; color: var(--ggv-teal); padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { background: rgba(0,186,138,.12); }
+    button.primary { background: var(--ggv-teal); color: var(--ggv-navy); border-color: var(--ggv-teal); }
+    button.primary:hover { background: var(--ggv-mint); }
     .btns { display: flex; gap: 8px; }
     .btns button { flex: 1; }
-    a { color: #8ab4f8; text-decoration: none; font-size: 12px; }
-    .warn { font-size: 11px; color: #fdd663; background: #2a2400; border: 1px solid #4a3e00; padding: 8px; border-radius: 6px; }
-    .ok { font-size: 11px; color: #30a14e; }
-    footer { padding: 10px 16px; border-top: 1px solid #3c4043; display: flex; justify-content: space-between; align-items: center; }
+    a { color: #b8c4e8; text-decoration: none; font-size: 12px; }
+    a:hover { color: var(--ggv-teal); }
+    .warn { font-size: 11px; color: #fdd663; background: rgba(253,214,99,.08); border: 1px solid rgba(253,214,99,.3); padding: 8px; border-radius: 6px; }
+    .ok { font-size: 11px; color: var(--ggv-mint); }
+    footer { padding: 10px 16px; border-top: 1px solid rgba(255,255,255,.1); background: linear-gradient(90deg, var(--ggv-navy) 0%, var(--ggv-teal) 100%); display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 600; }
+    footer a { color: var(--ggv-white); }
   </style>
 </head>
 <body>
   <header>
-    <h1>🎤 Meet Live Coach</h1>
-    <div class="sub">Transcrição por canal + coaching de vendas ao vivo</div>
+    <img src="https://ggvinteligencia.com.br/wp-content/uploads/2025/08/Logo-GGV-Branca.png" alt="GGV" />
   </header>
   <main>
     <div class="row">
@@ -48,8 +54,8 @@
     <div id="msg"></div>
   </main>
   <footer>
-    <span class="sub">v0.1.0</span>
-    <a href="#" id="help">Ajuda</a>
+    <span>v0.2.0</span>
+    <a href="https://ggvinteligencia.com.br" target="_blank" rel="noopener">ggvinteligencia.com.br</a>
   </footer>
   <script src="popup.js"></script>
 </body>

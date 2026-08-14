@@ -1,77 +1,74 @@
-# Meet Live Coach
+# Meet Live Coach — GGV
 
-Extensão para Google Chrome (Manifest V3) que funciona como **live coach de vendas** durante chamadas no Google Meet. Toda vez que detecta uma chamada, ela:
+Extensão para Google Chrome (Manifest V3) que funciona como **live coach de vendas** durante chamadas no Google Meet, na identidade visual do **Grupo GGV**. Toda vez que detecta uma chamada, ela:
 
 1. **Transcreve** o que é dito pelos participantes, **separando por canal/falante**.
-2. **Dá dicas em tempo real** conforme um **playbook de vendas** que você anexa, usando um LLM compatível com a OpenAI.
+2. **Dá dicas em tempo real** conforme o **playbook de vendas GGV**, usando um LLM (MiniMax, Ollama local, OpenAI, etc.).
 
-A extensão é 100% local no navegador — nenhuma informação sai do seu Chrome além das chamadas que você configura para o seu próprio provedor de LLM.
+## Identidade GGV
 
-## Como funciona
+A interface usa a paleta oficial (`#002060` navy / `#33279B` azul / `#00BA8A` teal / `#00D38B` menta), fonte **Montserrat**, logos oficiais via URL e a faixa de rodapé com gradiente. Veja `identidade-ggv.md` para a referência completa.
 
-- **Participantes remotos:** a extensão lê as **legendas nativas do Google Meet** (ative o CC na chamada). As legendas nativas já vêm com o nome do falante, então cada participante vira um "canal" na transcrição.
-- **Sua própria voz (canal "You"):** opcional, capturada pelo microfone via `SpeechRecognition` do navegador (Web Speech API).
-- **Coaching:** em intervalos configuráveis, a transcrição recente é enviada ao LLM junto com o seu playbook, e a dica aparece na aba **Coach** do painel.
+## Canais de transcrição
 
-> Não usamos `tabCapture`/offscreen porque a `SpeechRecognition` do Chrome não consegue transcrever um `MediaStream` arbitrário — ela usa o microfone. As legendas nativas do Meet são a fonte mais confiável para os remotos e já trazem a separação por falante.
+| Canal | Origem | Como ativar |
+|---|---|---|
+| Participantes remotos | Legendas nativas do Google Meet (com nome do falante) | Ative o CC na chamada |
+| **You** | Seu microfone (Web Speech API) | Options → "Capturar meu microfone" |
+| **Tab** | Áudio da aba transcrito por seu **Whisper local** (Ollama/whisper.cpp/faster-whisper) | Options → "STT local" |
 
 ## Instalação (modo desenvolvedor)
 
 1. Baixe/clonar este repositório.
-2. Abra `chrome://extensions`.
-3. Ative o **Modo do desenvolvedor** (canto superior direito).
-4. Clique em **Carregar sem compactação** e selecione a pasta do projeto (a que contém o `manifest.json`).
-5. Fixe o ícone da extensão na barra.
+2. `chrome://extensions` → ative o **Modo do desenvolvedor**.
+3. **Carregar sem compactação** → selecione a pasta com o `manifest.json`.
 
 ## Uso
 
 1. Abra uma chamada em `https://meet.google.com/...`.
-2. **Ative as legendas (CC)** no Meet — botão CC na barra inferior.
-3. O painel "Meet Live Coach" aparece à direita. Se quiser incluir sua própria voz, clique em **Iniciar** no popup da extensão (isso dispara a permissão de microfone).
-4. Acompanhe a transcrição na aba **Transcrição** e as dicas na aba **Coach**.
+2. **Ative as legendas (CC)** no Meet.
+3. O painel aparece à direita (auto-start). Para incluir sua voz, clique em **Iniciar** no popup.
+4. Aba **Transcrição** = canais; aba **Coach** = dicas.
 
-## Configuração (página de Opções)
+## Configuração (Options)
 
-Clique no ícone da extensão → **Opções** (ou botão "Opções" no popup).
+### LLM (Coach) — já vem pré-configurado para MiniMax
+- Endpoint, modelo e API key. Botões de preset: **MiniMax**, **Ollama (LLM local)**, **OpenAI**.
+- MiniMax: `https://api.minimaxi.chat/v1/chat/completions`, modelo `MiniMax-Text-01`.
+- Ollama: `http://localhost:11434/v1/chat/completions` (rode `ollama serve`).
+- Cole sua API key do MiniMax no campo correspondente.
 
-- **Captura:** auto-início, captura de microfone, idiomas das legendas e do microfone.
-- **Coach (LLM):**
-  - **Endpoint** OpenAI-compatible. Exemplos:
-    - OpenAI: `https://api.openai.com/v1/chat/completions`
-    - Groq: `https://api.groq.com/openai/v1/chat/completions`
-    - OpenRouter: `https://openrouter.ai/api/v1/chat/completions`
-  - **Modelo** (ex.: `gpt-4o-mini`, `llama-3.3-70b-versatile`).
-  - **API Key** (deixe vazio se o endpoint não exigir).
-  - **Intervalo** entre análises (segundos).
-- **Playbook de vendas:** cole o texto do seu playbook. Ele é enviado como contexto a cada análise.
+### STT local (Whisper / Ollama) — áudio da aba
+- Ative a transcrição do áudio da aba via seu Whisper local.
+- Endpoint no formato OpenAI `/v1/audio/transcriptions`.
+- Presets: whisper.cpp (localhost:8080), faster-whisper-server (localhost:8000), Ollama (localhost:11434).
+- Exemplo com whisper.cpp: `./server -m ggml-large-v3.bin --port 8080`.
+
+### Playbook de vendas
+- Já vem preenchido com a **metodologia GGV** (condensada para coaching ao vivo).
+- O playbook completo de referência está em `playbook-ggv.md`.
 
 ## Estrutura do projeto
 
 ```
 manifest.json
-icons/                  # ícones da extensão
+icons/                          # icones GGV (navy/teal)
 src/
-  background/service-worker.js   # defaults + relay de mensagens
-  content/
-    meet-coach.js       # núcleo: legendas, mic, coaching, overlay
-    meet-coach.css      # estilos do overlay
-  popup/                # popup de controle
-  options/              # página de opções (playbook + LLM)
+  background/service-worker.js  # defaults + offscreen/tabCapture coordination
+  content/meet-coach.{js,css}   # nucleo: legendas, mic, STT-tab, coaching, overlay
+  offscreen/offscreen.js        # captura audio da aba -> Whisper local
+  popup/                        # controle (iniciar/parar/recolher)
+  options/                      # config: LLM, STT, playbook
+playbook-ggv.md                 # playbook de vendas completo (referencia)
+identidade-ggv.md               # identidade visual GGV (referencia)
 ```
-
-## Referências
-
-Arquitetura inspirada em projetos open-source do GitHub:
-- [recallai/Chrome-recording-transcription-extension](https://github.com/recallai/Chrome-recording-transcription-extension) — MV3 + leitura das legendas do Meet.
-- [sughodke/google-meet-transcripts](https://github.com/sughodke/google-meet-transcripts) — parser das legendas nativas com nome do falante.
-- [yunho0130/google-meet-cc-to-srt](https://github.com/yunho0130/google-meet-cc-to-srt) — per-speaker state tracking.
 
 ## Limitações
 
-- A separação por falante depende das legendas do Google Meet, que dependem de a call ter o CC ativo e de o Meet identificar o falante.
-- A `SpeechRecognition` funciona apenas no Chrome/Edge (não no Firefox).
-- Os seletores de DOM das legendas do Meet mudam entre versões; o parser usa heurísticas resilientes, mas pode precisar de ajuste se o Meet mudar a estrutura.
-- O reconhecimento de voz local não transcreve o áudio dos outros participantes — apenas o seu microfone. Para os remotos, usamos as legendas nativas.
+- A separação por falante depende das legendas do Google Meet identificarem o falante.
+- A `SpeechRecognition` (mic) funciona apenas no Chrome/Edge.
+- O canal "Tab" via Whisper local depende do seu servidor STT estar rodando e aceitar webm/opus.
+- Seletores de DOM das legendas do Meet mudam entre versões; o parser usa heurísticas resilientes.
 
 ## Licença
 

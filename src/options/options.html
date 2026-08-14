@@ -3,106 +3,105 @@
 <head>
   <meta charset="utf-8" />
   <title>Meet Live Coach — Opções</title>
+  <link rel="icon" type="image/svg+xml" href="https://ggvinteligencia.com.br/wp-content/uploads/2024/05/Favicon-GGV.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap">
   <style>
+    :root { --ggv-navy:#002060; --ggv-blue:#33279B; --ggv-teal:#00BA8A; --ggv-mint:#00D38B; --ggv-white:#FFFFFF; }
     :root { color-scheme: dark; }
-    body { font-family: 'Google Sans', Roboto, Arial, sans-serif; background: #1f1f1f; color: #e8eaed; margin: 0; padding: 24px; line-height: 1.5; }
-    .wrap { max-width: 760px; margin: 0 auto; }
+    body { font-family: 'Montserrat', system-ui, sans-serif; background: var(--ggv-navy); color: var(--ggv-white); margin: 0; padding: 24px; line-height: 1.5; }
+    .wrap { max-width: 820px; margin: 0 auto; }
+    .brandrow { display:flex; align-items:center; gap:14px; margin-bottom: 4px; }
+    .brandrow img { height: 36px; }
     h1 { font-size: 22px; margin: 0 0 4px; }
-    .lead { color: #9aa0a6; margin: 0 0 24px; }
-    section { background: #2a2a2a; border: 1px solid #3c4043; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
-    h2 { font-size: 15px; margin: 0 0 12px; }
-    label { display: block; font-size: 13px; color: #bdc1c6; margin: 12px 0 4px; }
-    input[type=text], input[type=password], input[type=number], textarea, select { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 7px; border: 1px solid #3c4043; background: #1f1f1f; color: #e8eaed; font: inherit; }
-    textarea { min-height: 220px; resize: vertical; font-family: 'Roboto Mono', ui-monospace, monospace; font-size: 12px; }
+    .lead { color: #b8c4e8; margin: 0 0 24px; }
+    section { background: rgba(255,255,255,.04); border: 1px solid rgba(0,186,138,.25); border-left: 4px solid var(--ggv-teal); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; }
+    h2 { font-size: 15px; margin: 0 0 12px; color: var(--ggv-teal); }
+    label { display: block; font-size: 13px; color: #cfd9f2; margin: 12px 0 4px; }
+    input[type=text], input[type=password], input[type=number], input[type=url], textarea, select { width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 7px; border: 1px solid rgba(255,255,255,.18); background: #001433; color: var(--ggv-white); font: inherit; }
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--ggv-teal); outline-offset: 1px; }
+    textarea { min-height: 260px; resize: vertical; font-family: 'Roboto Mono', ui-monospace, monospace; font-size: 12px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .hint { font-size: 11px; color: #9aa0a6; margin-top: 4px; }
+    .hint { font-size: 11px; color: #9fb0d8; margin-top: 4px; }
     .switch { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
-    .switch input { width: auto; }
+    .switch input { width: 18px; height: 18px; accent-color: var(--ggv-teal); }
     .actions { display: flex; gap: 10px; align-items: center; }
-    button { font: inherit; padding: 10px 18px; border-radius: 7px; border: 1px solid #3c4043; background: #2a2a2a; color: #e8eaed; cursor: pointer; }
-    button.primary { background: #1a73e8; border-color: #1a73e8; }
-    .saved { color: #30a14e; font-size: 13px; opacity: 0; transition: opacity .2s; }
+    button { font: inherit; padding: 10px 18px; border-radius: 7px; border: 1px solid var(--ggv-teal); background: transparent; color: var(--ggv-teal); cursor: pointer; font-weight: 600; }
+    button.primary { background: var(--ggv-teal); color: var(--ggv-navy); }
+    button:hover { background: rgba(0,186,138,.15); }
+    button.primary:hover { background: var(--ggv-mint); }
+    .saved { color: var(--ggv-mint); font-size: 13px; opacity: 0; transition: opacity .2s; }
     .saved.show { opacity: 1; }
-    code { background: #1f1f1f; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
-    .example { white-space: pre-wrap; background: #1f1f1f; border: 1px solid #3c4043; border-radius: 7px; padding: 10px 12px; font-size: 12px; max-height: 220px; overflow: auto; }
+    code { background: #001433; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: var(--ggv-mint); }
+    .example { white-space: pre-wrap; background: #001433; border: 1px solid rgba(255,255,255,.15); border-radius: 7px; padding: 10px 12px; font-size: 12px; max-height: 260px; overflow: auto; }
     details { margin-top: 8px; }
-    summary { cursor: pointer; color: #8ab4f8; font-size: 13px; }
+    summary { cursor: pointer; color: var(--ggv-teal); font-size: 13px; font-weight: 600; }
+    .preset { margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap; }
+    .preset button { padding: 6px 10px; font-size: 12px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Meet Live Coach — Opções</h1>
-    <p class="lead">Configure a captura, o LLM de coaching e cole o seu playbook de vendas.</p>
+    <div class="brandrow">
+      <img src="https://ggvinteligencia.com.br/wp-content/uploads/2025/08/Logo-GGV-Branca.png" alt="GGV" />
+      <div><h1>Meet Live Coach — Opções</h1></div>
+    </div>
+    <p class="lead">Configure a captura, o STT local, o LLM de coaching e o playbook de vendas GGV.</p>
 
     <section>
       <h2>Captura</h2>
       <div class="switch"><input type="checkbox" id="autoStart" /><label for="autoStart" style="margin:0">Iniciar automaticamente ao detectar um Meet</label></div>
-      <div class="switch"><input type="checkbox" id="captureMic" /><label for="captureMic" style="margin:0">Capturar meu microfone (canal "You")</label></div>
-      <div class="hint">Para os participantes remotos, a extensão lê as legendas nativas do Google Meet (ative o CC na call). Ative o microfone para incluir a sua própria voz como canal separado.</div>
+      <div class="switch"><input type="checkbox" id="captureMic" /><label for="captureMic" style="margin:0">Capturar meu microfone (canal "You") via Web Speech</label></div>
+      <div class="hint">Para os participantes remotos, a extensão lê por padrão as legendas nativas do Google Meet (ative o CC na call). Abaixo você pode ativar também a transcrição por áudio da aba via Whisper local.</div>
       <div class="grid">
-        <div>
-          <label for="captionLang">Idioma das legendas (Meet)</label>
-          <input type="text" id="captionLang" list="langs" />
-        </div>
-        <div>
-          <label for="micLang">Idioma do microfone</label>
-          <input type="text" id="micLang" list="langs" />
-        </div>
+        <div><label for="captionLang">Idioma das legendas (Meet)</label><input type="text" id="captionLang" list="langs" /></div>
+        <div><label for="micLang">Idioma do microfone</label><input type="text" id="micLang" list="langs" /></div>
       </div>
-      <datalist id="langs">
-        <option value="pt-BR"><option value="pt-PT"><option value="en-US"><option value="es-ES"><option value="es-419">
-      </datalist>
+      <datalist id="langs"><option value="pt-BR"><option value="pt-PT"><option value="en-US"><option value="es-ES"><option value="es-419"></datalist>
+    </section>
+
+    <section>
+      <h2>STT local (Whisper / Ollama) — áudio da aba</h2>
+      <div class="switch"><input type="checkbox" id="sttEnabled" /><label for="sttEnabled" style="margin:0">Ativar transcrição do áudio da aba via endpoint local</label></div>
+      <label for="sttEndpoint">Endpoint do STT (formato OpenAI /v1/audio/transcriptions)</label>
+      <input type="url" id="sttEndpoint" placeholder="http://localhost:8080/v1/audio/transcriptions" />
+      <label for="sttModel">Modelo (se o endpoint exigir)</label>
+      <input type="text" id="sttModel" placeholder="whisper-1" />
+      <label for="sttApiKey">API Key do STT (deixe vazio se for local sem auth)</label>
+      <input type="password" id="sttApiKey" placeholder="opcional" />
+      <div class="hint">Captura o áudio da aba (participantes remotos) e envia em chunks ao seu Whisper local (Ollama/whisper.cpp/faster-whisper-server). O canal aparece como "Tab". Use junto com as legendas nativas para mais robustez. Requer permissão de captura da aba a cada chamada.</div>
+      <div class="preset">
+        <button data-preset="whisper-cpp">whisper.cpp (localhost:8080)</button>
+        <button data-preset="faster-whisper">faster-whisper-server (localhost:8000)</button>
+        <button data-preset="ollama">Ollama (localhost:11434)</button>
+      </div>
     </section>
 
     <section>
       <h2>Coach (LLM)</h2>
       <div class="switch"><input type="checkbox" id="coachingEnabled" /><label for="coachingEnabled" style="margin:0">Ativar dicas de coaching em tempo real</label></div>
       <div class="grid">
-        <div>
-          <label for="llmEndpoint">Endpoint do LLM (OpenAI-compatible)</label>
-          <input type="text" id="llmEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
-        </div>
-        <div>
-          <label for="llmModel">Modelo</label>
-          <input type="text" id="llmModel" placeholder="gpt-4o-mini" />
-        </div>
+        <div><label for="llmEndpoint">Endpoint do LLM (OpenAI-compatible)</label><input type="url" id="llmEndpoint" placeholder="https://api.minimaxi.chat/v1/chat/completions" /></div>
+        <div><label for="llmModel">Modelo</label><input type="text" id="llmModel" placeholder="MiniMax-Text-01" /></div>
       </div>
-      <label for="llmApiKey">API Key (deixe vazio se o endpoint não exigir)</label>
-      <input type="password" id="llmApiKey" placeholder="sk-..." />
+      <label for="llmApiKey">API Key</label>
+      <input type="password" id="llmApiKey" placeholder="sk-... ou chave do MiniMax/Ollama (vazio se não exigir)" />
       <label for="coachingIntervalSeconds">Intervalo entre análises (segundos)</label>
       <input type="number" id="coachingIntervalSeconds" min="5" step="5" value="30" />
-      <div class="hint">A cada intervalo, a extensão envia a transcrição recente ao LLM e mostra uma dica no painel "Coach". Compatível com OpenAI, Groq, Together, OpenRouter, etc.</div>
+      <div class="preset">
+        <button data-preset="minimax">MiniMax</button>
+        <button data-preset="ollama-llm">Ollama (LLM local)</button>
+        <button data-preset="openai">OpenAI</button>
+      </div>
+      <div class="hint">A cada intervalo, a transcrição recente é enviada ao LLM e a dica aparece no painel "Coach". Compatível com MiniMax, Ollama (endpoint OpenAI-compatible), OpenAI, Groq, OpenRouter, Together.</div>
     </section>
 
     <section>
       <h2>Playbook de vendas</h2>
-      <label for="playbook">Cole aqui o seu playbook de vendas. Ele será enviado ao LLM como contexto em cada análise.</label>
-      <textarea id="playbook" placeholder="Ex.:&#10;## Etapas&#10;1. Abertura: apresente-se e confirme o contexto em até 30s&#10;2. Descoberta: faça 3 perguntas de dor (BANT)&#10;..."></textarea>
-      <details>
-        <summary>Ver exemplo de playbook</summary>
-        <div class="example"># Playbook SaaS B2B
-
-## Objetivos da call
-- Confirmar perfil do lead (cargo, time, stack atual)
-- Identificar dor principal
-- Agendar demo técnica
-
-## Estrutura (BANT)
-1. Budget: quem aprova o orçamento?
-2. Authority: você é o decisor?
-3. Need: qual o maior problema hoje?
-4. Timeline: prazo para resolver?
-
-## Gatilos de objeção
-- "Caro" -> ROI em N meses
-- "Sem tempo" -> value-based, quick win
-- "Já usamos X" -> tabela comparativa
-
-## Encerramento
-- Confirmar próximos passos com data
-- Enviar resumo por e-mail
-</div>
-      </details>
+      <label for="playbook">Playbook enviado ao LLM em cada análise. Já vem preenchido com a metodologia GGV.</label>
+      <textarea id="playbook" placeholder="..."></textarea>
+      <details><summary>Ver playbook GGV completo</summary><div class="example" id="playbookPreview"></div></details>
     </section>
 
     <div class="actions">
