@@ -12,6 +12,7 @@ const TAG = '[meet-coach:offscreen]';
 let mediaStream = null;
 let recorder = null;
 let chunks = [];
+let currentMime = '';
 let sttConfig = null;
 let chunkTimer = null;
 
@@ -61,19 +62,39 @@ async function startCapture(streamId) {
   tracks.forEach((t) => { t.enabled = true; });
   console.log(TAG, 'tab audio track:', tracks[0].label || '(sem nome)', 'muted:', tracks[0].muted);
 
+  // Recording strategy: record in self-contained segments. Each segment is
+  // finalized with stop() so its Blob has a complete webm header (using
+  // timeslice + clearing chunks would drop the EBML header and produce
+  // corrupt audio that STT endpoints reject). The recorder is restarted
+  // immediately for the next segment.
+  startSegment();
+  chunkTimer = setInterval(sliceSegment, 8000);
+}
+
+function startSegment() {
+  if (!mediaStream) return;
   chunks = [];
   const mime = pickMime();
   recorder = new MediaRecorder(mediaStream, mime ? { mimeType: mime } : undefined);
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.onerror = (e) => console.warn(TAG, 'MediaRecorder error', e?.error || e);
-  // Start with a timeslice so dataavailable fires periodically on its own.
-  recorder.start(2000);
-  console.log(TAG, 'MediaRecorder started, mime:', mime || 'default');
+  recorder.onstop = () => {
+    // Build a complete, valid webm from this segment then send it.
+    if (chunks.length > 0) flushToStt(chunks, mime);
+    chunks = [];
+  };
+  recorder.start();
+  currentMime = mime || '';
+  console.log(TAG, 'segment started, mime:', currentMime || 'default');
+}
 
-  // Additionally flush accumulated chunks every N seconds.
-  chunkTimer = setInterval(() => {
-    if (chunks.length > 0) flushToStt();
-  }, 8000);
+function sliceSegment() {
+  if (!recorder || recorder.state !== 'recording') return;
+  try { recorder.stop(); } catch {}
+  // Restart immediately for the next segment (onstop handles the flush).
+  setTimeout(() => {
+    if (mediaStream) startSegment();
+  }, 60);
 }
 
 function pickMime() {
@@ -96,11 +117,10 @@ function stopCapture() {
 let sttErrorCount = 0;
 let sttSuccessCount = 0;
 
-async function flushToStt() {
+async function flushToStt(segmentChunks, mime) {
   if (!sttConfig || !sttConfig.endpoint) return;
-  if (chunks.length === 0) return;
-  const blob = new Blob(chunks, { type: chunks[0].type || 'audio/webm' });
-  chunks = [];
+  if (!segmentChunks || segmentChunks.length === 0) return;
+  const blob = new Blob(segmentChunks, { type: mime || 'audio/webm' });
   if (blob.size < 2000) return; // skip near-empty slices
 
   const fd = new FormData();
@@ -120,8 +140,9 @@ async function flushToStt() {
     if (!res.ok) {
       sttErrorCount++;
       const detail = await res.text().catch(() => '');
-      console.warn(TAG, 'STT HTTP', res.status, detail.slice(0, 200));
-      reportSttStatus('error', `HTTP ${res.status}`);
+      const hint = humanizeSttError(res.status, detail);
+      console.warn(TAG, 'STT HTTP', res.status, detail.slice(0, 300));
+      reportSttStatus('error', `${res.status} ${hint}`.trim());
       return;
     }
     const data = await res.json();
@@ -135,6 +156,22 @@ async function flushToStt() {
     console.warn(TAG, 'STT fetch failed', e);
     reportSttStatus('error', String(e?.message || e).slice(0, 120));
   }
+}
+
+// Translate common STT HTTP/network errors into actionable hints.
+function humanizeSttError(status, body) {
+  const b = (body || '').toLowerCase();
+  if (status === 401) return 'API key inválida ou ausente';
+  if (status === 403) return 'Acesso negado (verifique a API key)';
+  if (status === 404) return 'endpoint/modelo não encontrado';
+  if (status === 413) return 'áudio grande demais (>25MB)';
+  if (status === 429) return 'limite de requisições (aguarde)';
+  if (status === 400 || status === 422) {
+    if (b.includes('model')) return 'modelo inválido — use whisper-large-v3 ou whisper-large-v3-turbo';
+    if (b.includes('file') || b.includes('format')) return 'formato de áudio rejeitado';
+    return 'requisição malformada';
+  }
+  return `HTTP ${status}`;
 }
 
 // Report STT health back to the content script so the panel can show it.

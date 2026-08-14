@@ -766,19 +766,23 @@
     b.classList.remove('ok', 'err', 'off');
     if (!sttOn || !state.running) {
       b.textContent = 'Áudio da aba: off';
+      b.title = 'STT da aba desativado. Ative nas Opções.';
       b.classList.add('off');
       return;
     }
     const st = state.sttStatus;
     if (st?.state === 'active') {
       b.textContent = 'Áudio da aba: ativo';
+      b.title = 'Transcrevendo áudio da aba — ' + (st.detail || 'ok');
       b.classList.add('ok');
     } else if (st?.state === 'error') {
       b.textContent = 'Áudio da aba: erro';
-      b.title = 'Erro no endpoint STT: ' + (st.detail || 'desconhecido');
+      b.title = 'Erro no STT: ' + (st.detail || 'desconhecido') +
+        '\n\nDicas:\n• 401 = API key inválida/ausente\n• modelo inválido = use whisper-large-v3\n• Failed to fetch = host_permissions ou CORS';
       b.classList.add('err');
     } else {
       b.textContent = 'Áudio da aba: aguardando…';
+      b.title = st?.detail || 'iniciando captura da aba';
       b.classList.add('off');
     }
   }
