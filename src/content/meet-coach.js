@@ -39,6 +39,7 @@
     micRestartTimer: null,
     micActive: false,
     tabSttActive: false,
+    sttStatus: null,        // { state: 'active'|'error'|'idle', detail }
     youCurrentText: '',
     youLastEmit: 0,
     // Runtime controls (independent of global settings)
@@ -77,6 +78,12 @@
     if (msg?.type === 'stt-result') {
       // Transcribed tab audio -> "Tab" channel.
       if (msg.text) appendTranscript('Tab', msg.text, 'tab');
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (msg?.type === 'stt-status') {
+      state.sttStatus = msg; // { state: 'active'|'error', detail }
+      renderSttStatus();
       sendResponse({ ok: true });
       return true;
     }
@@ -140,6 +147,8 @@
     const s = state.settings;
     if (!s || !s.sttEnabled || !s.sttEndpoint || state.tabSttActive) return;
     state.tabSttActive = true;
+    state.sttStatus = { state: 'idle', detail: 'iniciando captura da aba' };
+    renderSttStatus();
     chrome.runtime.sendMessage({
       type: 'start-tab-stt',
       sttEndpoint: s.sttEndpoint,
@@ -149,6 +158,8 @@
       if (chrome.runtime.lastError || !res?.ok) {
         console.warn(TAG, 'tab STT start failed', chrome.runtime.lastError, res);
         state.tabSttActive = false;
+        state.sttStatus = { state: 'error', detail: res?.error || 'falha ao iniciar captura da aba' };
+        renderSttStatus();
       } else {
         console.log(TAG, 'tab STT started ->', s.sttEndpoint);
       }
@@ -566,6 +577,7 @@
       <div class="mc-body"></div>
       <div class="mc-footer">
         <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Parado</span></div>
+        <span class="mc-stt-badge" id="mc-stt-badge" title="Status da transcrição por áudio da aba">Áudio da aba: off</span>
         <span class="mc-count">0 falas</span>
       </div>
       <div class="mc-resizer" id="mc-resizer" title="Arraste o canto para redimensionar"></div>
@@ -581,6 +593,7 @@
       count: root.querySelector('.mc-count'),
       tabs: Array.from(root.querySelectorAll('.mc-tab')),
       meetingSelect: root.querySelector('#mc-meeting-type'),
+      sttBadge: root.querySelector('#mc-stt-badge'),
       pauseTranscriptBtn: root.querySelector('#mc-pause-transcript'),
       pauseCoachBtn: root.querySelector('#mc-pause-coach'),
     };
@@ -741,6 +754,32 @@
       els.statusText.textContent = 'Gravando transcrição · coach pausado';
     } else {
       els.statusText.textContent = 'Gravando';
+    }
+    renderSttStatus();
+  }
+
+  // Show whether tab-audio STT is running / healthy / erroring in the footer.
+  function renderSttStatus() {
+    if (!els || !els.sttBadge) return;
+    const sttOn = !!(state.settings?.sttEnabled && state.settings?.sttEndpoint);
+    const b = els.sttBadge;
+    b.classList.remove('ok', 'err', 'off');
+    if (!sttOn || !state.running) {
+      b.textContent = 'Áudio da aba: off';
+      b.classList.add('off');
+      return;
+    }
+    const st = state.sttStatus;
+    if (st?.state === 'active') {
+      b.textContent = 'Áudio da aba: ativo';
+      b.classList.add('ok');
+    } else if (st?.state === 'error') {
+      b.textContent = 'Áudio da aba: erro';
+      b.title = 'Erro no endpoint STT: ' + (st.detail || 'desconhecido');
+      b.classList.add('err');
+    } else {
+      b.textContent = 'Áudio da aba: aguardando…';
+      b.classList.add('off');
     }
   }
 

@@ -18,10 +18,20 @@ let chunkTimer = null;
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'offscreen:start-tab') {
     sttConfig = { endpoint: msg.sttEndpoint, model: msg.sttModel, apiKey: msg.sttApiKey };
-    startCapture(msg.streamId).then(() => sendResponse({ ok: true })).catch((e) => {
-      console.warn(TAG, 'capture failed', e);
-      sendResponse({ ok: false, error: String(e) });
-    });
+    if (!msg.streamId) {
+      sendResponse({ ok: false, error: 'streamId ausente' });
+      return false;
+    }
+    startCapture(msg.streamId)
+      .then(() => {
+        reportSttStatus('active', 'captura iniciada');
+        sendResponse({ ok: true });
+      })
+      .catch((e) => {
+        console.warn(TAG, 'capture failed', e);
+        reportSttStatus('error', String(e?.message || e).slice(0, 120));
+        sendResponse({ ok: false, error: String(e?.message || e) });
+      });
     return true;
   }
   if (msg?.type === 'offscreen:stop') {
@@ -38,15 +48,27 @@ async function startCapture(streamId) {
     audio: {
       // Chrome tab capture provides a single track with the tab's audio.
       mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId },
+      optional: [{ googDisableLocalEcho: false }],
     },
     video: false,
   });
 
+  const tracks = mediaStream.getAudioTracks();
+  if (tracks.length === 0) {
+    throw new Error('Nenhuma faixa de áudio na captura da aba');
+  }
+  // Ensure the track is enabled/unmuted.
+  tracks.forEach((t) => { t.enabled = true; });
+  console.log(TAG, 'tab audio track:', tracks[0].label || '(sem nome)', 'muted:', tracks[0].muted);
+
   chunks = [];
-  recorder = new MediaRecorder(mediaStream, { mimeType: pickMime() });
+  const mime = pickMime();
+  recorder = new MediaRecorder(mediaStream, mime ? { mimeType: mime } : undefined);
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.onerror = (e) => console.warn(TAG, 'MediaRecorder error', e?.error || e);
   // Start with a timeslice so dataavailable fires periodically on its own.
   recorder.start(2000);
+  console.log(TAG, 'MediaRecorder started, mime:', mime || 'default');
 
   // Additionally flush accumulated chunks every N seconds.
   chunkTimer = setInterval(() => {
@@ -55,7 +77,8 @@ async function startCapture(streamId) {
 }
 
 function pickMime() {
-  for (const m of ['audio/webm', 'audio/webm;codecs=opus', 'audio/ogg']) {
+  // Prefer webm/opus which Whisper-compatible endpoints accept reliably.
+  for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']) {
     if (MediaRecorder.isTypeSupported(m)) return m;
   }
   return '';
@@ -70,6 +93,9 @@ function stopCapture() {
   if (mediaStream) { mediaStream.getTracks().forEach((t) => t.stop()); mediaStream = null; }
 }
 
+let sttErrorCount = 0;
+let sttSuccessCount = 0;
+
 async function flushToStt() {
   if (!sttConfig || !sttConfig.endpoint) return;
   if (chunks.length === 0) return;
@@ -83,6 +109,7 @@ async function flushToStt() {
   fd.append('file', blob, 'chunk.webm');
   fd.append('response_format', 'json');
   if (sttConfig.model) fd.append('model', sttConfig.model);
+  if (sttConfig.apiKey) fd.append('language', 'pt');
 
   try {
     const res = await fetch(sttConfig.endpoint, {
@@ -90,11 +117,27 @@ async function flushToStt() {
       headers: sttConfig.apiKey ? { Authorization: `Bearer ${sttConfig.apiKey}` } : {},
       body: fd,
     });
-    if (!res.ok) { console.warn(TAG, 'STT HTTP', res.status); return; }
+    if (!res.ok) {
+      sttErrorCount++;
+      const detail = await res.text().catch(() => '');
+      console.warn(TAG, 'STT HTTP', res.status, detail.slice(0, 200));
+      reportSttStatus('error', `HTTP ${res.status}`);
+      return;
+    }
     const data = await res.json();
     const text = (data?.text || '').trim();
+    sttSuccessCount++;
+    if (sttErrorCount > 0) sttErrorCount = 0; // reset on success
     if (text) chrome.runtime.sendMessage({ type: 'stt-result', text }).catch(() => {});
+    reportSttStatus('active', `${sttSuccessCount} chunks ok`);
   } catch (e) {
+    sttErrorCount++;
     console.warn(TAG, 'STT fetch failed', e);
+    reportSttStatus('error', String(e?.message || e).slice(0, 120));
   }
+}
+
+// Report STT health back to the content script so the panel can show it.
+function reportSttStatus(state, detail) {
+  chrome.runtime.sendMessage({ type: 'stt-status', state, detail }).catch(() => {});
 }

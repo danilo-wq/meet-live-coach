@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Meet Live Coach",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Transcrição em tempo real do Google Meet separada por participante, com dicas de coaching baseadas em um playbook de vendas.",
 
   "icons": {
@@ -23,13 +23,8 @@
 
   "host_permissions": [
     "https://meet.google.com/*",
-    "https://*.openai.com/*",
-    "https://*.groq.com/*",
-    "https://openrouter.ai/*",
-    "https://api.together.ai/*",
-    "https://api.minimaxi.chat/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://*/*",
+    "https://*/*"
   ],
 
   "background": {

@@ -110,8 +110,13 @@ async function ensureOffscreen() {
 }
 
 function getStreamIdForTab(tabId) {
-  return new Promise((resolve) => {
-    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => resolve(streamId));
+  return new Promise((resolve, reject) => {
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+      const err = chrome.runtime.lastError;
+      if (err) return reject(new Error(err.message));
+      if (!streamId) return reject(new Error('streamId vazio (tabCapture negado?)'));
+      resolve(streamId);
+    });
   });
 }
 
