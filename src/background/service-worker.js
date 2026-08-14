@@ -65,11 +65,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         await ensureOffscreen();
-        const tabId = _sender.tab?.id;
-        const streamId = await getStreamIdForTab(tabId);
+        // The streamId is now provided by the popup (user-gesture context),
+        // because tabCapture.getMediaStreamId requires a user gesture /
+        // activeTab grant that the auto-start path cannot provide.
         await chrome.runtime.sendMessage({
           type: 'offscreen:start-tab',
-          streamId,
+          streamId: msg.streamId,
           sttEndpoint: msg.sttEndpoint,
           sttModel: msg.sttModel,
           sttApiKey: msg.sttApiKey,
@@ -107,17 +108,6 @@ async function ensureOffscreen() {
     justification: 'Capture Meet tab audio to transcribe participants via a local Whisper endpoint.',
   });
   offscreenReady = true;
-}
-
-function getStreamIdForTab(tabId) {
-  return new Promise((resolve, reject) => {
-    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
-      const err = chrome.runtime.lastError;
-      if (err) return reject(new Error(err.message));
-      if (!streamId) return reject(new Error('streamId vazio (tabCapture negado?)'));
-      resolve(streamId);
-    });
-  });
 }
 
 void TAG;

@@ -121,7 +121,10 @@
     mountOverlay();
     startCaptionCapture();
     if (state.settings?.captureMic) startMic();
-    if (state.settings?.sttEnabled && state.settings?.sttEndpoint) startTabStt();
+    // NOTE: tab-audio STT is NOT started here. tabCapture.getMediaStreamId
+    // requires a user gesture (activeTab), so it must be triggered from the
+    // popup's Start button via startTabSttWithGesture(). Auto-start only
+    // enables captions + mic, which don't need a user gesture.
     scheduleCoaching(true);
     setHeaderStatus(true);
     console.log(TAG, 'started');
@@ -806,12 +809,15 @@
         d.className = 'mc-stt-detail err';
       }
     } else {
+      // STT enabled & running, but no capture started yet. Remind the user
+      // to click "Iniciar" in the extension popup (the user gesture needed
+      // for tabCapture).
       b.textContent = 'Áudio da aba: aguardando…';
-      b.title = st?.detail || 'iniciando captura da aba';
+      b.title = 'Clique em "Iniciar" no ícone da extensão para ativar o áudio da aba';
       b.classList.add('off');
       if (d) {
         d.style.display = 'block';
-        d.textContent = '⏳ ' + (st?.detail || 'iniciando captura da aba…');
+        d.textContent = '⏳ Clique em "Iniciar" no ícone da extensão para capturar o áudio da aba';
         d.className = 'mc-stt-detail wait';
       }
     }

@@ -44,16 +44,59 @@ function sendToTab(type, done) {
   chrome.tabs.sendMessage(activeTab.id, { type }, () => { if (chrome.runtime.lastError) setMsg('Aba do Meet não respondeu. Recarregue-a.', true); done?.(); });
 }
 
+// tabCapture.getMediaStreamId requires a user gesture + activeTab grant.
+// The popup's button click IS that gesture, so we obtain the streamId here
+// and hand it to the service worker (which forwards to the offscreen doc).
+function getStreamIdForTab(tabId) {
+  return new Promise((resolve, reject) => {
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+      const err = chrome.runtime.lastError;
+      if (err) reject(new Error(err.message));
+      else if (!streamId) reject(new Error('streamId vazio (tabCapture negado)'));
+      else resolve(streamId);
+    });
+  });
+}
+
+async function startTabSttWithGesture() {
+  if (!activeTab) return;
+  try {
+    const settings = await chrome.runtime.sendMessage({ type: 'get-settings' });
+    const s = settings?.settings || {};
+    if (!s.sttEnabled || !s.sttEndpoint) return; // STT disabled, nothing to do
+    const streamId = await getStreamIdForTab(activeTab.id);
+    await chrome.runtime.sendMessage({
+      type: 'start-tab-stt',
+      streamId,
+      sttEndpoint: s.sttEndpoint,
+      sttModel: s.sttModel,
+      sttApiKey: s.sttApiKey,
+    });
+  } catch (e) {
+    setMsg('Áudio da aba: ' + (e?.message || e), true);
+  }
+}
+
 function setMsg(text, warn) {
   $('msg').innerHTML = warn ? `<div class="warn">${text}</div>` : `<div class="ok">${text}</div>`;
 }
 
-$('startBtn').addEventListener('click', () => { setStatus('waiting', 'Iniciando…'); sendToTab('start', () => setTimeout(refreshStatus, 300)); });
+$('startBtn').addEventListener('click', () => {
+  setStatus('waiting', 'Iniciando…');
+  sendToTab('start', () => {
+    // Start tab-audio STT within the user-gesture context (this click).
+    startTabSttWithGesture();
+    setTimeout(refreshStatus, 300);
+  });
+});
 $('stopBtn').addEventListener('click', () => { setStatus('waiting', 'Parando…'); sendToTab('stop', () => setTimeout(refreshStatus, 300)); });
 $('restartBtn').addEventListener('click', () => {
   if (!confirm('Reiniciar limpa a transcrição e as dicas e recomeça a captura. Continuar?')) return;
   setStatus('waiting', 'Reiniciando…');
-  sendToTab('restart', () => setTimeout(refreshStatus, 400));
+  sendToTab('restart', () => {
+    startTabSttWithGesture();
+    setTimeout(refreshStatus, 400);
+  });
 });
 $('collapseBtn').addEventListener('click', () => sendToTab('toggle-collapse'));
 $('optsBtn').addEventListener('click', () => chrome.runtime.openOptionsPage());
