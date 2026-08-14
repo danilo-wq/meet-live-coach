@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Meet Live Coach",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "description": "Transcrição em tempo real do Google Meet separada por participante, com dicas de coaching baseadas em um playbook de vendas.",
 
   "icons": {

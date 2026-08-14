@@ -1,6 +1,9 @@
 const $ = (id) => document.getElementById(id);
 let activeTab = null;
 
+// Minimal defaults for STT fields (full defaults live in the service worker).
+const DEFAULT_SETTINGS = { sttEnabled: false, sttEndpoint: '', sttModel: '', sttApiKey: '' };
+
 function setStatus(state, text) {
   const badge = $('statusBadge');
   badge.classList.remove('recording', 'stopped', 'waiting');
@@ -58,50 +61,70 @@ function getStreamIdForTab(tabId) {
   });
 }
 
-async function startTabSttWithGesture() {
-  if (!activeTab) return;
-  try {
-    const settings = await chrome.runtime.sendMessage({ type: 'get-settings' });
-    const s = settings?.settings || {};
-    if (!s.sttEnabled || !s.sttEndpoint) return; // STT disabled, nothing to do
-    // Stop any existing capture first — Chrome rejects getMediaStreamId with
-    // "Cannot capture a tab with an active stream" if a prior stream is live.
-    await chrome.runtime.sendMessage({ type: 'stop-tab-stt' }).catch(() => {});
-    // Give the offscreen document time to release the MediaStream tracks.
-    await new Promise((r) => setTimeout(r, 400));
-    const streamId = await getStreamIdForTab(activeTab.id);
-    await chrome.runtime.sendMessage({
-      type: 'start-tab-stt',
-      streamId,
-      sttEndpoint: s.sttEndpoint,
-      sttModel: s.sttModel,
-      sttApiKey: s.sttApiKey,
-    });
-  } catch (e) {
-    setMsg('Áudio da aba: ' + (e?.message || e), true);
-  }
-}
-
 function setMsg(text, warn) {
   $('msg').innerHTML = warn ? `<div class="warn">${text}</div>` : `<div class="ok">${text}</div>`;
 }
 
-$('startBtn').addEventListener('click', () => {
+$('startBtn').addEventListener('click', async () => {
   setStatus('waiting', 'Iniciando…');
-  sendToTab('start', () => {
-    // Start tab-audio STT within the user-gesture context (this click).
-    startTabSttWithGesture();
-    setTimeout(refreshStatus, 300);
-  });
+  if (!activeTab) { setMsg('Nenhuma aba do Meet ativa.', true); return; }
+  // Call getMediaStreamId IMMEDIATELY in the user-gesture context (this
+  // click) — before any async messaging that could outlive the popup.
+  // If a previous capture is still live, stop it and retry once.
+  let streamId = null;
+  try {
+    streamId = await getStreamIdForTab(activeTab.id);
+  } catch (e) {
+    await chrome.runtime.sendMessage({ type: 'stop-tab-stt' }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 500));
+    try { streamId = await getStreamIdForTab(activeTab.id); }
+    catch (e2) { setMsg('Áudio da aba: ' + (e2?.message || e2), true); }
+  }
+  // Start captions + mic in the content script.
+  sendToTab('start');
+  // Hand the streamId to the service worker → offscreen (persistent).
+  if (streamId) {
+    chrome.storage.local.get(['settings'], ({ settings = {} }) => {
+      const s = { ...DEFAULT_SETTINGS, ...settings };
+      if (s.sttEnabled && s.sttEndpoint) {
+        chrome.runtime.sendMessage({
+          type: 'start-tab-stt',
+          streamId,
+          sttEndpoint: s.sttEndpoint,
+          sttModel: s.sttModel,
+          sttApiKey: s.sttApiKey,
+        }).catch(() => {});
+      }
+    });
+  }
+  setTimeout(refreshStatus, 300);
 });
 $('stopBtn').addEventListener('click', () => { setStatus('waiting', 'Parando…'); sendToTab('stop', () => setTimeout(refreshStatus, 300)); });
-$('restartBtn').addEventListener('click', () => {
+$('restartBtn').addEventListener('click', async () => {
   if (!confirm('Reiniciar limpa a transcrição e as dicas e recomeça a captura. Continuar?')) return;
   setStatus('waiting', 'Reiniciando…');
-  sendToTab('restart', () => {
-    startTabSttWithGesture();
-    setTimeout(refreshStatus, 400);
-  });
+  if (!activeTab) return;
+  // Stop old capture + get a fresh streamId in the user-gesture context.
+  await chrome.runtime.sendMessage({ type: 'stop-tab-stt' }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 500));
+  let streamId = null;
+  try { streamId = await getStreamIdForTab(activeTab.id); }
+  catch (e) { setMsg('Áudio da aba: ' + (e?.message || e), true); }
+  // Restart content script (captions + mic).
+  sendToTab('restart');
+  // Start tab STT with the fresh streamId.
+  if (streamId) {
+    chrome.storage.local.get(['settings'], ({ settings = {} }) => {
+      const s = { ...DEFAULT_SETTINGS, ...settings };
+      if (s.sttEnabled && s.sttEndpoint) {
+        chrome.runtime.sendMessage({
+          type: 'start-tab-stt', streamId,
+          sttEndpoint: s.sttEndpoint, sttModel: s.sttModel, sttApiKey: s.sttApiKey,
+        }).catch(() => {});
+      }
+    });
+  }
+  setTimeout(refreshStatus, 400);
 });
 $('collapseBtn').addEventListener('click', () => sendToTab('toggle-collapse'));
 $('optsBtn').addEventListener('click', () => chrome.runtime.openOptionsPage());

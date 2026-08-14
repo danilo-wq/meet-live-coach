@@ -97,7 +97,9 @@
     if (state.running) {
       if (s.captureMic && !state.micActive) startMic();
       if (!s.captureMic && state.micActive) stopMic();
-      if (s.sttEnabled && s.sttEndpoint && !state.tabSttActive) startTabStt();
+      // Tab-audio STT is NOT started here — it requires a user gesture
+      // (popup click) to call tabCapture.getMediaStreamId, which the content
+      // script cannot provide. Only stop it if STT was disabled.
       if ((!s.sttEnabled || !s.sttEndpoint) && state.tabSttActive) stopTabStt();
       scheduleCoaching(true);
     }

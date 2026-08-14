@@ -64,10 +64,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === 'start-tab-stt') {
     (async () => {
       try {
+        if (!msg.streamId) {
+          sendResponse({ ok: false, error: 'streamId ausente — clique Iniciar no popup da extensão' });
+          return;
+        }
         await ensureOffscreen();
-        // The streamId is now provided by the popup (user-gesture context),
-        // because tabCapture.getMediaStreamId requires a user gesture /
-        // activeTab grant that the auto-start path cannot provide.
         await chrome.runtime.sendMessage({
           type: 'offscreen:start-tab',
           streamId: msg.streamId,
