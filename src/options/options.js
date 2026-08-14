@@ -256,4 +256,73 @@ document.getElementById('pbCancel').addEventListener('click', closePlaybookEdito
 document.getElementById('pbDelete').addEventListener('click', deletePlaybookFromEditor);
 document.getElementById('pbText').addEventListener('input', updateCharCount);
 
+// ---- STT endpoint test -------------------------------------------------
+document.getElementById('testSttBtn').addEventListener('click', testSttEndpoint);
+
+// Build a minimal valid silent WAV (1s, 16kHz, 16-bit mono) to exercise the
+// STT endpoint end-to-end without needing a live recording.
+function buildSilentWav(durationSec = 1, sampleRate = 16000) {
+  const numSamples = durationSec * sampleRate;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);        // PCM
+  view.setUint16(22, 1, true);        // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  // samples left as zero (silence)
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function testSttEndpoint() {
+  const btn = document.getElementById('testSttBtn');
+  const result = document.getElementById('testSttResult');
+  const endpoint = document.getElementById('sttEndpoint').value.trim();
+  const model = document.getElementById('sttModel').value.trim();
+  const apiKey = document.getElementById('sttApiKey').value.trim();
+  if (!endpoint) { result.textContent = '❌ Preencha o endpoint'; result.className = 'test-result err'; return; }
+  btn.disabled = true;
+  result.textContent = '⏳ Testando…'; result.className = 'test-result wait';
+  try {
+    const fd = new FormData();
+    fd.append('file', buildSilentWav(1), 'test.wav');
+    fd.append('response_format', 'json');
+    if (model) fd.append('model', model);
+    if (apiKey) fd.append('language', 'pt');
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      body: fd,
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      result.textContent = `✅ OK! Resposta: "${(data?.text || '(silêncio)').slice(0, 40)}"`;
+      result.className = 'test-result ok';
+    } else {
+      const detail = await res.text().catch(() => '');
+      let hint = `HTTP ${res.status}`;
+      if (res.status === 401) hint = 'HTTP 401 — API key inválida ou ausente';
+      else if (res.status === 404) hint = 'HTTP 404 — endpoint/modelo não encontrado';
+      else if (res.status === 429) hint = 'HTTP 429 — limite de requisições';
+      else if (res.status === 400 || res.status === 422) hint = `HTTP ${res.status} — ${detail.slice(0, 80)}`;
+      result.textContent = '❌ ' + hint;
+      result.className = 'test-result err';
+    }
+  } catch (e) {
+    result.textContent = '❌ Erro de rede: ' + (e?.message || e) + ' (verifique host_permissions/CORS)';
+    result.className = 'test-result err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', load);

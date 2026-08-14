@@ -575,6 +575,7 @@
         <div class="mc-tab" data-tab="coach">Coach</div>
       </div>
       <div class="mc-body"></div>
+      <div class="mc-stt-detail" id="mc-stt-detail"></div>
       <div class="mc-footer">
         <div class="mc-status"><span class="mc-dot idle"></span> <span class="mc-status-text">Parado</span></div>
         <span class="mc-stt-badge" id="mc-stt-badge" title="Status da transcrição por áudio da aba">Áudio da aba: off</span>
@@ -594,6 +595,7 @@
       tabs: Array.from(root.querySelectorAll('.mc-tab')),
       meetingSelect: root.querySelector('#mc-meeting-type'),
       sttBadge: root.querySelector('#mc-stt-badge'),
+      sttDetail: root.querySelector('#mc-stt-detail'),
       pauseTranscriptBtn: root.querySelector('#mc-pause-transcript'),
       pauseCoachBtn: root.querySelector('#mc-pause-coach'),
     };
@@ -721,17 +723,22 @@
   function toggleCollapse() {
     state.collapsed = !state.collapsed;
     if (!els) return;
-    els.root.style.display = state.collapsed ? 'none' : 'flex';
+    // Use a class toggle (CSS !important) instead of inline display, because
+    // .mc-root sets display:flex !important which would override inline none.
+    els.root.classList.toggle('mc-hidden', state.collapsed);
+    const existing = document.getElementById('mc-fab');
     if (state.collapsed) {
-      const fab = document.createElement('div');
-      fab.className = 'mc-collapsed';
-      fab.id = 'mc-fab';
-      fab.textContent = '🎤';
-      fab.title = 'Abrir Meet Live Coach';
-      fab.addEventListener('click', toggleCollapse);
-      document.body.appendChild(fab);
+      if (!existing) {
+        const fab = document.createElement('div');
+        fab.className = 'mc-collapsed';
+        fab.id = 'mc-fab';
+        fab.textContent = '🎤';
+        fab.title = 'Abrir Meet Live Coach';
+        fab.addEventListener('click', toggleCollapse);
+        document.body.appendChild(fab);
+      }
     } else {
-      document.getElementById('mc-fab')?.remove();
+      existing?.remove();
     }
   }
 
@@ -764,26 +771,49 @@
     const sttOn = !!(state.settings?.sttEnabled && state.settings?.sttEndpoint);
     const b = els.sttBadge;
     b.classList.remove('ok', 'err', 'off');
-    if (!sttOn || !state.running) {
+
+    // Visible detail line above footer
+    const d = els.sttDetail;
+    if (d) d.className = 'mc-stt-detail';
+
+    if (!sttOn) {
       b.textContent = 'Áudio da aba: off';
       b.title = 'STT da aba desativado. Ative nas Opções.';
       b.classList.add('off');
+      if (d) d.style.display = 'none';
       return;
     }
+    if (!state.running) {
+      b.textContent = 'Áudio da aba: off';
+      b.classList.add('off');
+      if (d) d.style.display = 'none';
+      return;
+    }
+
     const st = state.sttStatus;
     if (st?.state === 'active') {
       b.textContent = 'Áudio da aba: ativo';
       b.title = 'Transcrevendo áudio da aba — ' + (st.detail || 'ok');
       b.classList.add('ok');
+      if (d) { d.style.display = 'none'; d.textContent = ''; }
     } else if (st?.state === 'error') {
       b.textContent = 'Áudio da aba: erro';
-      b.title = 'Erro no STT: ' + (st.detail || 'desconhecido') +
-        '\n\nDicas:\n• 401 = API key inválida/ausente\n• modelo inválido = use whisper-large-v3\n• Failed to fetch = host_permissions ou CORS';
+      b.title = 'Erro no STT: ' + (st.detail || 'desconhecido');
       b.classList.add('err');
+      if (d) {
+        d.style.display = 'block';
+        d.textContent = '⚠ ' + (st.detail || 'erro desconhecido');
+        d.className = 'mc-stt-detail err';
+      }
     } else {
       b.textContent = 'Áudio da aba: aguardando…';
       b.title = st?.detail || 'iniciando captura da aba';
       b.classList.add('off');
+      if (d) {
+        d.style.display = 'block';
+        d.textContent = '⏳ ' + (st?.detail || 'iniciando captura da aba…');
+        d.className = 'mc-stt-detail wait';
+      }
     }
   }
 

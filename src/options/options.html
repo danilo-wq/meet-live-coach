@@ -35,6 +35,12 @@
     button.sm { padding: 6px 12px; font-size: 12px; }
     button.danger { color: #c0392b; border-color: #e6b8b3; }
     button.danger:hover { background: #fdf2f0; color: #c0392b; border-color: #c0392b; }
+    .btn-test { padding: 8px 14px; font-size: 13px; }
+    .btn-test:disabled { opacity: .5; cursor: default; }
+    .test-result { font-size: 13px; font-weight: 600; margin-left: 6px; }
+    .test-result.ok { color: #1f9d55; }
+    .test-result.err { color: #c0392b; }
+    .test-result.wait { color: #975a16; }
     .saved { color: var(--ggv-mint); font-size: 13px; opacity: 0; transition: opacity .2s; font-weight: 600; }
     .saved.show { opacity: 1; }
 
@@ -110,6 +116,7 @@
       </div>
       <div class="switch"><input type="checkbox" id="sttEnabled" /><label for="sttEnabled">Ativar transcrição do áudio da aba via STT</label></div>
       <div class="hint">Captura o áudio da aba (participantes remotos) e envia em chunks ao seu servidor. O canal aparece como "Tab".</div>
+      <div style="margin-top:10px"><button type="button" class="btn-test" id="testSttBtn">🧪 Testar endpoint STT</button> <span id="testSttResult" class="test-result"></span></div>
     </section>
 
     <section>
