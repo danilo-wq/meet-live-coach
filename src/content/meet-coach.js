@@ -126,6 +126,9 @@
     if (state.captionObserver) state.captionObserver.disconnect();
     state.captionObserver = null;
     state.captionContainer = null;
+    captionCardCache.forEach((e) => e.debounce && clearTimeout(e.debounce));
+    captionCardCache.clear();
+    captionsEnableTries = 0;
     stopMic();
     stopTabStt();
     setHeaderStatus(false);
@@ -159,62 +162,153 @@
   }
 
   // ---- Caption capture (remote speakers) --------------------------------
-  // Google Meet renders live captions inside a container with class names
-  // that change between releases. We use a resilient selector covering the
-  // currently-known structures, plus an image-based fallback.
-  const CAPTION_SELECTORS = [
-    '.a4Qtq',                       // classic caption line wrapper
-    'div[role="button"] div[aria-level]', // caption content with speaker
-    '.GamlYe',                      // newer caption caption text container
-    'div[jsname][class] span[style]',     // generic last resort spans
-  ];
+  // Google Meet renders live captions as per-speaker "cards" near the bottom
+  // of the screen. The DOM class names change often, so we locate the
+  // captions container by a geometry/structure heuristic (avatar images from
+  // googleusercontent grouped by class, lowest-common-ancestor, centered or
+  // bottom-left aligned) — the approach used by proven open-source Meet
+  // transcript extensions. We then observe that container and track each card
+  // with a trailing debounce so a speaker's evolving utterance is captured
+  // once (finalized) instead of duplicated.
 
-  // Each caption "card" groups a speaker name + their current utterance.
-  function findCaptionCards(root = document) {
-    // The most stable signal historically: caption lines live near an avatar
-    // image from googleusercontent. We locate the ancestor that holds both.
-    const cards = [];
-    const seen = new Set();
-    const imgs = Array.from(root.querySelectorAll('img')).filter((i) =>
-      /googleusercontent\.com/.test(i.src || '')
-    );
-    for (const img of imgs) {
-      const card = img.closest('div');
-      if (!card || seen.has(card)) continue;
-      const { person, text } = extractCaptionData(card);
-      if (text) { seen.add(card); cards.push({ node: card, person: person || 'Participante', text }); }
-    }
-    return cards;
-  }
+  const captionCardCache = new Map(); // node -> { person, text, debounce }
 
-  function extractCaptionData(node) {
-    // Try direct child text (speaker name) then leaf spans (utterance text).
-    let person = '';
-    // Many layouts put the speaker name in a div with direct text content.
-    const nameEl = node.querySelector('div[aria-level], div[role="listitem"]');
-    if (nameEl) person = (nameEl.textContent || '').trim();
+  function getCaptionData(node) {
+    // Speaker name = a direct text node inside a child div (Meet renders the
+    // name as bare text, not in a span). XPath keeps it robust to class churn.
+    let person = 'Participante';
+    try {
+      const it = document.evaluate('.//div/text()', node, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE);
+      let n;
+      while ((n = it.iterateNext())) {
+        const t = (n.textContent || '').trim();
+        if (t && t.length < 60) { person = t; break; }
+      }
+    } catch {}
 
+    // Utterance text = concatenation of leaf spans (matches Meet's layout).
     const spans = Array.from(node.querySelectorAll('span')).filter((s) => s.children.length === 0);
     let text = spans.map((s) => (s.textContent || '').trim()).join(' ').trim();
     if (!text) text = (node.textContent || '').trim();
     return { person, text };
   }
 
+  // Find the real closed-captions container via avatar-image grouping + geometry.
+  function findCaptionContainer() {
+    const imgs = Array.from(document.querySelectorAll('img')).filter((i) =>
+      /googleusercontent\.com\//.test(i.src || '')
+    );
+    if (imgs.length === 0) return null;
+
+    const byClass = {};
+    for (const img of imgs) {
+      const key = img.className || '__noclass__';
+      (byClass[key] = byClass[key] || []).push(img);
+    }
+
+    const candidates = [];
+    for (const classNodes of Object.values(byClass)) {
+      // Every node in the group must have a nearby leaf span with real text.
+      let matches = 0;
+      for (const node of classNodes) {
+        const spans = document.evaluate(`..//span`, node.parentElement, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE);
+        let s;
+        while ((s = spans.iterateNext())) {
+          if (s.children.length === 0 && (s.textContent || '').trim().length > 3) { matches++; break; }
+        }
+      }
+      if (matches !== classNodes.length) continue;
+
+      // Lowest common ancestor of the grouped nodes.
+      let candidate = null;
+      if (classNodes.length >= 2) {
+        const copy = classNodes.slice();
+        let current = null, ok = true;
+        do {
+          for (let i = 0; i < copy.length; i++) {
+            copy[i] = copy[i].parentElement;
+            if (!copy[i]) { ok = false; break; }
+            if (i === 0) current = copy[i];
+            else if (current && current !== copy[i]) current = null;
+          }
+        } while (current === null && ok);
+        candidate = current;
+      } else {
+        let n = classNodes[0];
+        while (n && !candidate) {
+          if (n.getAttribute && n.getAttribute('jscontroller')) candidate = n;
+          n = n.parentElement;
+        }
+      }
+      if (!candidate) continue;
+
+      // Geometry check: captions are centered near the bottom, or bottom-left,
+      // spanning ~60% width — this rejects participant tiles.
+      const child = candidate.children[0];
+      if (!child) continue;
+      const rect = child.getBoundingClientRect();
+      const W = window.innerWidth;
+      const isLeftAligned = rect.left < W * 0.2;
+      const isNotRightAligned = rect.right < W * 0.9;
+      const isWiderThanHalf = rect.right > W * 0.5;
+      const nearBottom = rect.bottom > window.innerHeight * 0.45;
+      if (nearBottom && ((isLeftAligned && isNotRightAligned && isWiderThanHalf))) {
+        candidates.push(candidate);
+      }
+    }
+    return candidates.length >= 1 ? candidates[0] : null;
+  }
+
+  function processCaptionCard(node) {
+    if (!node || !state.running) return;
+    const { person, text } = getCaptionData(node);
+    if (!text) return;
+    let entry = captionCardCache.get(node);
+    if (!entry) {
+      entry = { person, text, debounce: null };
+      captionCardCache.set(node, entry);
+      // Emit immediately so the line appears without delay.
+      appendTranscript(person, text, 'caption');
+    }
+    // Trailing debounce: re-read the (possibly extended) text once it settles.
+    if (entry.debounce) clearTimeout(entry.debounce);
+    entry.debounce = setTimeout(() => {
+      const fresh = getCaptionData(node);
+      entry.person = fresh.person;
+      entry.text = fresh.text;
+      appendTranscript(fresh.person, fresh.text, 'caption');
+      entry.debounce = null;
+    }, 1200);
+  }
+
   function pollCaptionsOnce() {
-    const cards = findCaptionCards();
-    for (const c of cards) appendTranscript(c.person, c.text, 'caption');
+    const container = state.captionContainer;
+    if (!container) return;
+    // Each direct card is a child block holding one speaker's avatar + text.
+    const cards = container.querySelectorAll('img');
+    const seen = new Set();
+    for (const img of cards) {
+      if (!/googleusercontent\.com\//.test(img.src || '')) continue;
+      const card = img.closest('div[jscontroller]') || img.parentElement?.parentElement || img.parentElement;
+      if (!card || seen.has(card)) continue;
+      seen.add(card);
+      processCaptionCard(card);
+    }
+    // Prune cache for removed nodes.
+    for (const key of captionCardCache.keys()) {
+      if (!document.contains(key)) { captionCardCache.delete(key); }
+    }
   }
 
   let captionPollTimer = null;
   function startCaptionCapture() {
     if (captionPollTimer) clearInterval(captionPollTimer);
     captionPollTimer = setInterval(pollCaptionsOnce, 1000);
-
-    // Also use a MutationObserver to catch new caption cards immediately.
     attachCaptionObserver();
-    // Keep trying to (re)attach as the captions container appears/disappears.
     if (state._attachInterval) clearInterval(state._attachInterval);
     state._attachInterval = setInterval(attachCaptionObserver, 2000);
+    // Try to ensure captions are ON (best-effort; user may need to enable CC).
+    tryEnableCaptions();
   }
 
   function attachCaptionObserver() {
@@ -230,18 +324,29 @@
     }
   }
 
-  function findCaptionContainer() {
-    // Heuristic: the bottom-centered captions box. Prefer elements with a
-    // known caption-related class; otherwise fall back to the subtree holding
-    // googleusercontent avatar images.
-    for (const sel of CAPTION_SELECTORS) {
-      const el = document.querySelector(sel);
-      if (el) return el.closest('section, div[role="region"], div') || el;
+  // Best-effort: click the "Turn on captions" / "Ativar legendas" control so
+  // the caption stream exists. Safe to call repeatedly; no-op if already on.
+  let captionsEnableTries = 0;
+  function tryEnableCaptions() {
+    if (!state.running) return;
+    if (captionsEnableTries > 8) return; // give up after ~16s
+    captionsEnableTries++;
+    const btn = findCaptionsButton();
+    if (btn && /ativar|turn on|legendas|captions/i.test(btn.getAttribute('aria-label') || '')) {
+      try { btn.click(); } catch {}
     }
-    const img = Array.from(document.querySelectorAll('img')).find((i) =>
-      /googleusercontent\.com/.test(i.src || '')
-    );
-    if (img) return img.closest('div')?.parentElement || null;
+    setTimeout(tryEnableCaptions, 2000);
+  }
+
+  function findCaptionsButton() {
+    // Meet's captions toggle lives in the bottom control bar.
+    const candidates = document.querySelectorAll('[aria-label]');
+    for (const el of candidates) {
+      const label = (el.getAttribute('aria-label') || '').toLowerCase();
+      if (/ativar legendas|desativar legendas|turn on captions|turn off captions|legendas|captions/.test(label)) {
+        if (el.closest('button') || el.getAttribute('role') === 'button' || el.tagName === 'BUTTON') return el;
+      }
+    }
     return null;
   }
 
@@ -319,11 +424,23 @@
     const norm = normalizeText(text);
     if (!norm) return;
     const last = state.transcript[state.transcript.length - 1];
-    if (last && last.speaker === speaker && source === 'caption') {
-      // If the new text extends the previous one, replace; if it is a near
-      // duplicate, ignore.
-      if (norm === last._norm) return;
+    // Only attempt to merge caption fragments from the same speaker within a
+    // short window (Meet replaces a card's text as the utterance evolves).
+    if (last && last.speaker === speaker && source === 'caption' && (Date.now() - last.ts) < 8000) {
+      // Meet shows an evolving utterance in the same card: the card text grows
+      // (and sometimes reformats slightly). Merge when the new text is the same,
+      // a superset, or a near-superset of the previous line for this speaker.
+      if (norm === last._norm) return;          // identical -> drop
       if (last._norm && norm.startsWith(last._norm)) {
+        last.text = text; last._norm = norm; last.ts = Date.now();
+        renderTranscriptUpdate(last, 'update');
+        return;
+      }
+      // Previous line is a prefix of the new one (Meet appended words).
+      if (last._norm && last._norm.startsWith(norm)) return;
+      // Word-level overlap: if the new line contains the whole previous line,
+      // treat as an extension and replace (avoids duplicate fragments).
+      if (last._norm && norm.includes(last._norm)) {
         last.text = text; last._norm = norm; last.ts = Date.now();
         renderTranscriptUpdate(last, 'update');
         return;

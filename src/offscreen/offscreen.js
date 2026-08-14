@@ -45,18 +45,12 @@ async function startCapture(streamId) {
   chunks = [];
   recorder = new MediaRecorder(mediaStream, { mimeType: pickMime() });
   recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-  recorder.onstop = () => flushToStt();
-  recorder.start(); // gather data continuously
+  // Start with a timeslice so dataavailable fires periodically on its own.
+  recorder.start(2000);
 
-  // Slice every N seconds: stop -> onstop flush -> restart.
+  // Additionally flush accumulated chunks every N seconds.
   chunkTimer = setInterval(() => {
-    if (recorder && recorder.state === 'recording') {
-      try { recorder.stop(); } catch {}
-      setTimeout(() => {
-        chunks = [];
-        try { recorder.start(); } catch {}
-      }, 150);
-    }
+    if (chunks.length > 0) flushToStt();
   }, 8000);
 }
 
